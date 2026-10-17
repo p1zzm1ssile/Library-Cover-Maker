@@ -117,12 +117,18 @@ button:focus-visible, input:focus-visible, select:focus-visible, .drop:focus-vis
 .jf .msg.bad { border-color: #d04545; }
 .jf img { max-width: 260px; border-radius: 6px; border: 1px solid var(--line); }
 code { font-size: 12.5px; overflow-wrap: anywhere; }
+.adv, .batch { border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; }
+.adv > summary, .batch > summary { cursor: pointer; font-weight: 700; font-size: 14px; }
+.adv[open], .batch[open] { display: grid; gap: 10px; }
+.srv { grid-template-columns: repeat(auto-fit, minmax(80px, 1fr)); }
+.libticks { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.fails { margin: 0; padding-left: 1.2em; font-size: 13px; color: var(--muted); max-height: 200px; overflow-y: auto; }
 </style>
 
 <div class="wrap">
   <header>
     <h1>Library Cover Maker</h1>
-    <p>Add up to 5 videos or pictures, or pick a folder and let it choose 5 at random. Type your library name and get an <strong>animated WebP</strong> or <strong>GIF</strong> cover that cuts between moments from each one, or switch to <strong>Poster</strong> for a portrait film or series poster. Choose the moment for each video, or leave it random. Pictures get a slow zoom.</p>
+    <p>Add up to 5 videos or pictures, or pick a folder and let it choose 5 at random. Type your library name and get an <strong>animated WebP</strong> or <strong>GIF</strong> cover that cuts between moments from each one, or a <strong>still PNG</strong>. Switch to <strong>Poster</strong> for a portrait film or series poster. Choose the moment for each video, or leave it random. Pictures get a slow zoom. Connected to Jellyfin or Emby, it can cut the moments from a title’s own video and make one for every film, series and library in one go.</p>
   </header>
 
   <div class="bench">
@@ -140,10 +146,31 @@ code { font-size: 12.5px; overflow-wrap: anywhere; }
           <label for="format">File type</label>
           <select id="format">
             <option value="webp">Animated WebP (smaller, best quality)</option>
-            <option value="gif">Animated GIF (stays animated in the Jellyfin apps)</option>
+            <option value="gif">Animated GIF (stays animated in the Jellyfin apps and Emby)</option>
+            <option value="png">Still PNG (for Plex, or anywhere)</option>
           </select>
         </div>
-        <label class="check"><input id="fade" type="checkbox" checked> Fade between clips</label>
+        <label class="check" id="fadeWrap"><input id="fade" type="checkbox" checked> Fade between clips</label>
+        <details class="adv" id="advWrap">
+          <summary>File size settings</summary>
+          <div class="group">
+            <label for="outSize">Size</label>
+            <select id="outSize"></select>
+          </div>
+          <div class="group">
+            <label for="fps">Frames a second</label>
+            <div class="row"><input id="fps" type="range" min="4" max="15" step="1" value="12"><output id="fpsOut"></output></div>
+          </div>
+          <div class="group" id="coloursWrap">
+            <label for="colours">Colours (GIF)</label>
+            <div class="row"><input id="colours" type="range" min="16" max="256" step="16" value="256"><output id="coloursOut"></output></div>
+          </div>
+          <div class="group">
+            <label for="clips">Moments from a server video</label>
+            <div class="row"><input id="clips" type="range" min="1" max="5" step="1" value="3"><output id="clipsOut"></output></div>
+          </div>
+          <p class="hint">Smaller sizes, fewer frames and fewer colours make smaller files. The moments setting is how many moments are cut from a film, episodes from a series, or titles from a library when the pictures come from your server.</p>
+        </details>
         <button class="primary" id="make">Make animated cover</button>
         <p class="hint" id="err" hidden></p>
         <div id="out" hidden>
@@ -151,12 +178,12 @@ code { font-size: 12.5px; overflow-wrap: anywhere; }
             <li>Click <strong>Download animated cover</strong> (or right-click the animation → Save image as…).</li>
             <li>In Jellyfin, right-click the library → <strong>Edit images</strong> → upload it with type <strong>Logo</strong>.</li>
             <li>Add the CSS from the chat for that library, then press Ctrl+F5.</li>
-            <li>Or use <strong>Send to Jellyfin</strong> below to make it the library’s main image in one click.</li>
+            <li>Or use <strong>Send to your server</strong> below to make it the library’s main image in one click.</li>
           </ol>
           <ol class="howto" id="howtoPoster" hidden>
             <li>Click <strong>Download animated poster</strong> (or right-click the animation → Save image as…).</li>
             <li>In Jellyfin, open the film or series → <strong>⋯</strong> → <strong>Edit images</strong> → upload it with type <strong>Primary</strong>.</li>
-            <li>Or use <strong>Send to Jellyfin</strong> below to do it in one click.</li>
+            <li>Or use <strong>Send to your server</strong> below to do it in one click, on Jellyfin, Emby or Plex.</li>
           </ol>
           <p class="hint" id="outInfo"></p>
           <a class="primary dl" id="dl" href="#" download="cover.webp">Download animated cover</a>
@@ -165,28 +192,55 @@ code { font-size: 12.5px; overflow-wrap: anywhere; }
       </div>
 
       <div class="jf" id="jf">
-        <h2>Send to Jellyfin</h2>
-        <p class="hint" id="jfStatus">Checking for Jellyfin…</p>
+        <h2>Send to your server</h2>
+        <p class="hint" id="srvStatus">Looking for Jellyfin, Emby and Plex…</p>
+        <div class="modes srv" id="srvTabs" role="radiogroup" aria-label="Server" hidden></div>
         <div class="group" id="jfBody" hidden>
-          <label for="jfKey">Jellyfin API key</label>
+          <label for="jfKey" id="jfKeyLbl">API key</label>
           <div class="row"><input id="jfKey" type="password" autocomplete="off" spellcheck="false"><button type="button" class="ghost" id="jfConnect">Connect</button></div>
-          <p class="hint">Make one in Jellyfin under <strong>Dashboard → API Keys</strong>. It’s saved in this browser only.</p>
+          <p class="hint" id="jfKeyHint"></p>
+          <p class="hint" id="srvNote" hidden></p>
 
           <div class="group" id="jfLibWrap" hidden>
             <label for="jfLib">Library</label>
             <select id="jfLib"></select>
+            <div class="btns">
+              <button type="button" class="ghost" id="jfLibVideo">Use videos from this library</button>
+              <button type="button" class="ghost" id="jfLibRestore" hidden>Put back its own picture</button>
+            </div>
             <button type="button" class="primary" id="jfSendLib">Send cover to this library</button>
           </div>
 
           <div class="group" id="jfItemWrap" hidden>
             <label for="jfSearch">Film or series</label>
             <form class="row" id="jfSearchForm"><input id="jfSearch" type="text" autocomplete="off" placeholder="Search by name"><button type="submit" class="ghost">Search</button></form>
+            <div class="btns"><button type="button" class="ghost" id="jfRandom">Pick one at random</button></div>
             <ul class="results" id="jfResults"></ul>
+            <div class="btns">
+              <button type="button" class="ghost" id="jfItemVideo">Use its video</button>
+              <button type="button" class="ghost" id="jfItemRestore" hidden>Put back its own poster</button>
+            </div>
             <button type="button" class="primary" id="jfSendItem">Send poster to this title</button>
           </div>
 
           <p class="msg" id="jfMsg" role="status" hidden></p>
-          <img id="jfImg" alt="The image Jellyfin now has" hidden>
+          <img id="jfImg" alt="The image your server now has" hidden>
+
+          <details class="batch" id="batch" hidden>
+            <summary id="batchTitle">Posters for every film and series</summary>
+            <p class="hint" id="batchIntro"></p>
+            <span class="lbl">Libraries</span>
+            <ul class="libticks" id="batchLibs"></ul>
+            <p class="hint" id="batchEstimate"></p>
+            <div class="btns">
+              <button type="button" class="primary" id="batchNew">Make the missing ones</button>
+              <button type="button" class="ghost" id="batchAll">Make them all again</button>
+              <button type="button" class="ghost" id="batchStop" hidden>Stop</button>
+              <button type="button" class="ghost" id="batchRestore">Put back all the originals</button>
+            </div>
+            <p class="msg" id="batchMsg" role="status" hidden></p>
+            <ul class="fails" id="batchFails"></ul>
+          </details>
         </div>
       </div>
     </section>
@@ -427,14 +481,14 @@ code { font-size: 12.5px; overflow-wrap: anywhere; }
     $('title').placeholder = poster ? 'Film or series title' : '';
     $('titleLbl').textContent = poster ? 'Film or series title' : 'Library name';
     $('presets').hidden = poster;
-    $('make').textContent = makeLabel();
+    fillSizes();
     $('howtoCover').hidden = poster; $('howtoPoster').hidden = !poster;
     $('out').hidden = true;
     $('jfImg').hidden = true; jfMsg('');
     jfShowMode();
     redraw();
   }
-  const makeLabel = () => mode === 'poster' ? 'Make animated poster' : 'Make animated cover';
+  const makeLabel = () => `Make ${$('format').value === 'png' ? 'still' : 'animated'} ${mode === 'poster' ? 'poster' : 'cover'}`;
   document.querySelectorAll('input[name=mode]').forEach(r => r.addEventListener('change', () => r.checked && setMode(r.value)));
 
   // Fonts load async; redraw once each is ready.
@@ -521,6 +575,7 @@ code { font-size: 12.5px; overflow-wrap: anywhere; }
   // nothing else (new videos, folder listings) could load and the page froze.
   function releaseSource(s) {
     if (s.isVideo) { s.el.pause(); s.el.removeAttribute('src'); s.el.load(); }
+    if (s.clip) stopClip(s.clip);
     if (s.url) URL.revokeObjectURL(s.url);
   }
 
@@ -541,7 +596,7 @@ code { font-size: 12.5px; overflow-wrap: anywhere; }
       if (i === state.active) li.classList.add('active');
       li.innerHTML = `<div class="top"><span class="n">${i + 1}</span><span class="name"></span><span class="kind">${s.isVideo ? 'video' : 'picture'}</span><button type="button" class="rm" aria-label="Remove">×</button></div>`;
       li.querySelector('.name').textContent = s.name;
-      if (s.isVideo && s.el.duration) li.appendChild(momentRow(s, i));
+      if (s.isVideo && Number.isFinite(s.el.duration) && s.el.duration > 0) li.appendChild(momentRow(s, i));
       li.addEventListener('click', e => {
         if (e.target.closest('.rm')) { removeSource(i); return; }
         if (e.target.closest('.moment')) return;
@@ -727,19 +782,45 @@ code { font-size: 12.5px; overflow-wrap: anywhere; }
     const z = $('zoom'); z.value = Math.max(100, Math.min(300, +z.value - Math.sign(e.deltaY) * 10)); redraw();
   }, { passive: false });
 
-  // ---- Animated WebP and GIF export ----
+  // ---- Animated WebP, GIF and still PNG export ----
   // WebP: each frame is encoded by the browser as a still WebP, then the frames are
   // packed into one animated WebP (VP8X + ANIM + ANMF chunks).
-  // GIF: each frame gets its own 256-colour palette and is added with gifenc (web/gifenc.js).
-  // GIFs are smaller in size and frame rate to keep the file sensible: Jellyfin sends GIFs to
+  // GIF: each frame gets its own palette and is added with gifenc (web/gifenc.js).
+  // GIFs default to a smaller size and frame rate to keep the file sensible: Jellyfin sends GIFs to
   // its apps untouched, so they stay animated, while WebPs are turned into still pictures.
-  const OUTPUT = {
-    cover:  { webp: { w: 640, h: 360, fps: 12 }, gif: { w: 480, h: 270, fps: 10 } },
-    poster: { webp: { w: 400, h: 600, fps: 12 }, gif: { w: 320, h: 480, fps: 10 } },
+  // PNG: the preview as it is now, at full size, for servers that only show stills (Plex, Emby).
+  const SIZE_CHOICES = {
+    cover:  { webp: ['480x270', '640x360', '800x450'], gif: ['320x180', '480x270', '640x360'] },
+    poster: { webp: ['300x450', '400x600', '500x750'], gif: ['160x240', '240x360', '320x480'] },
   };
+  const DEFAULTS = { cover: { webp: ['640x360', 12], gif: ['480x270', 10] }, poster: { webp: ['400x600', 12], gif: ['320x480', 10] } };
   const FADE = 4;
   const fmtSize = n => n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${Math.round(n / 1024)} KB`;
-  let lastResult = null; // { blob, mode, format } of the newest animation, for Send to Jellyfin
+  let lastResult = null; // { blob, mode, format } of the newest animation, for Send to your server
+
+  function fillSizes() {
+    const format = $('format').value, still = format === 'png';
+    $('advWrap').hidden = still; $('fadeWrap').hidden = still;
+    $('make').textContent = makeLabel();
+    if (still) return;
+    const sel = $('outSize'), [size, fps] = DEFAULTS[mode][format];
+    sel.innerHTML = '';
+    for (const s of SIZE_CHOICES[mode][format]) {
+      const o = document.createElement('option'); o.value = s; o.textContent = s.replace('x', ' × ') + ' pixels'; sel.appendChild(o);
+    }
+    sel.value = size; $('fps').value = fps;
+    $('coloursWrap').hidden = format !== 'gif';
+    showAdv();
+  }
+  function showAdv() {
+    $('fpsOut').textContent = $('fps').value;
+    $('coloursOut').textContent = $('colours').value;
+    $('clipsOut').textContent = $('clips').value;
+  }
+  $('format').addEventListener('change', fillSizes);
+  ['fps', 'colours', 'clips'].forEach(id => $(id).addEventListener('input', () => { showAdv(); batchEstimate(); }));
+  $('outSize').addEventListener('change', batchEstimate);
+  fillSizes();
 
   const concat = arrs => {
     const out = new Uint8Array(arrs.reduce((n, a) => n + a.length, 0));
@@ -789,28 +870,33 @@ code { font-size: 12.5px; overflow-wrap: anywhere; }
     };
   }
 
-  function gifEncoder(w, h, ms) {
+  function gifEncoder(w, h, ms, colours) {
     if (!window.gifenc) throw new Error('nogif');
     const { GIFEncoder, quantize, applyPalette } = window.gifenc;
     const gif = GIFEncoder();
     return {
       add(canvas) {
         const { data } = canvas.getContext('2d').getImageData(0, 0, w, h);
-        const palette = quantize(data, 256, { format: 'rgb565' });
+        const palette = quantize(data, colours, { format: 'rgb565' });
         gif.writeFrame(applyPalette(data, palette, 'rgb565'), w, h, { palette, delay: ms, repeat: 0 });
       },
       finish() { gif.finish(); return new Blob([gif.bytes()], { type: 'image/gif' }); },
     };
   }
 
-  $('make').addEventListener('click', async () => {
-    const btn = $('make'), err = $('err'), rail = document.querySelector('.rail');
-    btn.disabled = true; err.hidden = true;
-    rail.inert = true; // the files can't be swapped out while their frames are being made
-    if (state.pool.length && $('autoShuffle').checked) { btn.textContent = 'Picking random files…'; await pickFromPool(); }
-    const format = $('format').value, { w: OW, h: OH, fps: FPS } = OUTPUT[mode][format];
+  // Makes the file from a list of sources with the settings on screen, drawing each frame in the preview.
+  // progress(made, total) is called after each frame.
+  async function render(list, progress = () => {}) {
+    const format = $('format').value;
+    if (format === 'png') {
+      const src = list[0];
+      if (src.isVideo) await seekTo(src.el, src.start ?? src.el.currentTime);
+      draw(src, 1);
+      const blob = await new Promise((res, rej) => cv.toBlob(b => b ? res(b) : rej(new Error('the picture couldn’t be saved')), 'image/png'));
+      return { blob, format, w: W, h: H, len: 0, k: 1 };
+    }
+    const [OW, OH] = $('outSize').value.split('x').map(Number), FPS = +$('fps').value;
     const len = +$('len').value, total = Math.round(len * FPS), ms = Math.round(1000 / FPS);
-    const list = state.sources.length ? state.sources : [sampleSource];
     const k = list.length;
     const fade = $('fade').checked && k > 1;
     // Split the frames evenly between the files; the last one takes any remainder.
@@ -822,32 +908,48 @@ code { font-size: 12.5px; overflow-wrap: anywhere; }
     const pctx = prev.getContext('2d');
     let made = 0;
 
-    try {
-      const enc = format === 'gif' ? gifEncoder(OW, OH, ms) : webpEncoder(OW, OH, ms);
-      for (let s = 0; s < k; s++) {
-        const src = list[s], n = counts[s];
-        const start = !src.isVideo ? 0 : src.start == null ? randomTime(src.el, n / FPS) : Math.max(0, Math.min(src.start, src.el.duration - n / FPS));
-        for (let i = 0; i < n; i++) {
-          if (src.isVideo) { await seekTo(src.el, start + i / FPS); draw(src, 1); }
-          else if (k === 1) draw(src, 1 + 0.12 * (1 - Math.cos(2 * Math.PI * i / n)) / 2); // zoom in and back out, loops cleanly
-          else draw(src, 1 + 0.12 * i / n); // slow push-in
+    const enc = format === 'gif' ? gifEncoder(OW, OH, ms, +$('colours').value) : webpEncoder(OW, OH, ms);
+    for (let s = 0; s < k; s++) {
+      const src = list[s], n = counts[s];
+      const dur = src.isVideo && Number.isFinite(src.el.duration) ? src.el.duration : Infinity;
+      const start = !src.isVideo ? 0 : src.start == null ? randomTime(src.el, n / FPS) : Math.max(0, Math.min(src.start, dur - n / FPS));
+      for (let i = 0; i < n; i++) {
+        if (src.isVideo) { await seekTo(src.el, start + i / FPS); draw(src, 1); }
+        else if (k === 1) draw(src, 1 + 0.12 * (1 - Math.cos(2 * Math.PI * i / n)) / 2); // zoom in and back out, loops cleanly
+        else draw(src, 1 + 0.12 * i / n); // slow push-in
 
+        octx.globalAlpha = 1;
+        octx.drawImage(cv, 0, 0, OW, OH);
+        if (fade && s > 0 && i < FADE) {
+          octx.globalAlpha = 1 - (i + 1) / (FADE + 1);
+          octx.drawImage(prev, 0, 0);
           octx.globalAlpha = 1;
-          octx.drawImage(cv, 0, 0, OW, OH);
-          if (fade && s > 0 && i < FADE) {
-            octx.globalAlpha = 1 - (i + 1) / (FADE + 1);
-            octx.drawImage(prev, 0, 0);
-            octx.globalAlpha = 1;
-          }
-
-          enc.add(oc);
-          made++;
-          btn.textContent = `Making frame ${made} of ${total}…`;
-          await new Promise(r => setTimeout(r, 0));
         }
-        pctx.drawImage(oc, 0, 0); // remember this clip's last frame for the next fade
+
+        enc.add(oc);
+        made++;
+        progress(made, total);
+        await new Promise(r => setTimeout(r, 0));
       }
-      const blob = enc.finish();
+      pctx.drawImage(oc, 0, 0); // remember this clip's last frame for the next fade
+    }
+    return { blob: enc.finish(), format, w: OW, h: OH, len, k };
+  }
+
+  const renderError = e => e.message === 'nowebp'
+    ? 'This browser can’t make WebP images. Choose GIF or PNG, or open this page in Edge, Chrome or Firefox.'
+    : e.message === 'nogif' ? 'The GIF maker (gifenc.js) didn’t load. Reload the page and try again.'
+    : 'Something went wrong making it: ' + e.message;
+
+  $('make').addEventListener('click', async () => {
+    const btn = $('make'), err = $('err'), rail = document.querySelector('.rail');
+    btn.disabled = true; err.hidden = true;
+    rail.inert = true; // the files can't be swapped out while their frames are being made
+    if (state.pool.length && $('autoShuffle').checked) { btn.textContent = 'Picking random files…'; await pickFromPool(); }
+    const list = state.sources.length ? state.sources : [sampleSource];
+    try {
+      const res = await render(list, (made, total) => { btn.textContent = `Making frame ${made} of ${total}…`; });
+      const { blob, format } = res;
       lastResult = { blob, mode, format };
       const img = $('outImg');
       img.classList.toggle('portrait', mode === 'poster');
@@ -855,16 +957,16 @@ code { font-size: 12.5px; overflow-wrap: anywhere; }
       img.src = URL.createObjectURL(blob);
       $('dl').href = img.src;
       $('dl').download = (($('title').value || mode).trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || mode) + '.' + format;
-      $('dl').textContent = `Download animated ${mode} (${format.toUpperCase()})`;
-      const big = blob.size > 5 * 1024 * 1024 ? ' That’s quite big: a shorter animation makes a smaller file.' : '';
-      $('outInfo').textContent = `${format.toUpperCase()}, ${OW}×${OH}, ${len} seconds, ${k} clip${k > 1 ? 's' : ''}, ${fmtSize(blob.size)}.${big} Click Make again for different random moments.`;
+      $('dl').textContent = format === 'png' ? `Download still ${mode} (PNG)` : `Download animated ${mode} (${format.toUpperCase()})`;
+      const big = blob.size > 5 * 1024 * 1024 ? ' That’s quite big: a shorter animation or a smaller size makes a smaller file.' : '';
+      $('outInfo').textContent = format === 'png'
+        ? `PNG, ${res.w}×${res.h}, ${fmtSize(blob.size)}. It’s the preview as it is now: move the picture or pick another moment, then Make again.`
+        : `${format.toUpperCase()}, ${res.w}×${res.h}, ${res.len} seconds, ${res.k} clip${res.k > 1 ? 's' : ''}, ${fmtSize(blob.size)}.${big} Click Make again for different random moments.`;
       $('out').hidden = false;
+      batchEstimate();
       img.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'nearest' });
     } catch (e) {
-      err.textContent = e.message === 'nowebp'
-        ? 'This browser can’t make WebP images. Choose GIF, or open this page in Edge, Chrome or Firefox.'
-        : e.message === 'nogif' ? 'The GIF maker (gifenc.js) didn’t load. Reload the page and try again.'
-        : 'Something went wrong making the animation: ' + e.message;
+      err.textContent = renderError(e);
       err.hidden = false;
     } finally {
       btn.disabled = false; btn.textContent = makeLabel(); rail.inert = false;
@@ -872,77 +974,139 @@ code { font-size: 12.5px; overflow-wrap: anywhere; }
     }
   });
 
-  // ---- Send to Jellyfin ----
-  // The container passes /jellyfin/ on to the JELLYFIN_URL it was started with, so the
-  // browser only ever talks to this page's own address. The API key stays in this browser.
-  const JF = 'jellyfin/', KEY_STORE = 'libraryCoverMaker.jellyfinKey';
-  const jf = { ready: false, libs: [], item: null };
-  const store = {
-    get() { try { return localStorage.getItem(KEY_STORE) || ''; } catch { return ''; } },
-    set(v) { try { v ? localStorage.setItem(KEY_STORE, v) : localStorage.removeItem(KEY_STORE); } catch {} },
+  // ---- Send to your server ----
+  // The container passes /jellyfin/, /emby/ and /plex/ on to the addresses it was started with
+  // (JELLYFIN_URL, EMBY_URL and PLEX_URL), so the browser only ever talks to this page's own address.
+  // Keys and tokens stay in this browser.
+  const SERVERS = {
+    jellyfin: { name: 'Jellyfin', base: 'jellyfin/', env: 'JELLYFIN_URL', keyLabel: 'Jellyfin API key',
+      keyHint: 'Make one in Jellyfin under <strong>Dashboard → API Keys</strong>. It’s saved in this browser only.' },
+    emby: { name: 'Emby', base: 'emby/', env: 'EMBY_URL', keyLabel: 'Emby API key',
+      keyHint: 'Make one in Emby’s server settings under <strong>API Keys</strong>. It’s saved in this browser only.' },
+    plex: { name: 'Plex', base: 'plex/', env: 'PLEX_URL', keyLabel: 'Plex token',
+      keyHint: 'In Plex, open any film’s <strong>⋯ → Get Info → View XML</strong> and copy the <code>X-Plex-Token</code> value from the end of the address. It’s saved in this browser only.' },
   };
+  const KEY_STORE = { jellyfin: 'libraryCoverMaker.jellyfinKey', emby: 'libraryCoverMaker.embyKey', plex: 'libraryCoverMaker.plexToken' };
+  const local = {
+    get(k, d = '') { try { return localStorage.getItem(k) ?? d; } catch { return d; } },
+    set(k, v) { try { v ? localStorage.setItem(k, v) : localStorage.removeItem(k); } catch {} },
+  };
+  const found = [];       // servers this container can reach
+  let srv = null;          // the server chosen in the tabs: 'jellyfin', 'emby' or 'plex'
+  const conn = { ready: false, libs: [], item: null };
+  const isPlex = () => srv === 'plex';
+  const key = () => $('jfKey').value.trim();
 
   function jfMsg(text, kind) {
     const m = $('jfMsg');
     m.textContent = text; m.className = 'msg' + (kind ? ' ' + kind : ''); m.hidden = !text;
   }
 
-  async function jfFetch(path, opts = {}) {
-    const key = $('jfKey').value.trim();
-    const r = await fetch(JF + path, {
-      ...opts,
-      headers: { Authorization: `MediaBrowser Token="${key}"`, 'X-Emby-Token': key, ...(opts.headers || {}) },
-    });
+  function authHeaders(k = key()) {
+    return isPlex() ? { 'X-Plex-Token': k, Accept: 'application/json' } : { Authorization: `MediaBrowser Token="${k}"`, 'X-Emby-Token': k };
+  }
+
+  async function srvFetch(path, opts = {}) {
+    const name = SERVERS[srv].name;
+    const r = await fetch(SERVERS[srv].base + path, { ...opts, headers: { ...authHeaders(), ...(opts.headers || {}) } });
     if (!r.ok) {
-      const why = r.status === 401 || r.status === 403 ? 'Jellyfin didn’t accept the API key. Check it under Dashboard → API Keys.'
-        : r.status === 413 ? 'The file is too big for Jellyfin to take. Try a shorter animation.'
-        : r.status === 502 || r.status === 504 ? 'Can’t reach Jellyfin at the address in JELLYFIN_URL.'
-        : `Jellyfin replied with an error (${r.status}).`;
-      throw new Error(why);
+      const why = r.status === 401 || r.status === 403 ? `${name} didn’t accept the ${isPlex() ? 'token' : 'API key'}.`
+        : r.status === 413 ? `The file is too big for ${name} to take. Try a shorter animation or a smaller size.`
+        : r.status === 502 || r.status === 504 ? `Can’t reach ${name} at the address in ${SERVERS[srv].env}.`
+        : `${name} replied with an error (${r.status}).`;
+      const e = new Error(why); e.status = r.status; throw e;
     }
     return r;
   }
+  const srvJson = async (path, opts) => (await srvFetch(path, opts)).json();
 
-  function jfShowMode() {
-    $('jfLibWrap').hidden = !jf.ready || mode !== 'cover';
-    $('jfItemWrap').hidden = !jf.ready || mode !== 'poster';
+  async function checkServers() {
+    const notes = [];
+    for (const [kind, s] of Object.entries(SERVERS)) {
+      let r;
+      try { r = await fetch(s.base + (kind === 'plex' ? 'identity' : 'System/Info/Public'), { headers: { Accept: 'application/json' } }); }
+      catch { $('srvStatus').textContent = 'Sending works when this page is opened from the Library Cover Maker container. You can still download the file and upload it yourself.'; return; }
+      if (r.status === 503) continue;
+      let info = null;
+      try { if (r.ok) info = await r.json(); } catch {}
+      const version = kind === 'plex' ? info?.MediaContainer?.version : info?.Version;
+      if (!version) { notes.push(`Can’t reach ${s.name} at the address in ${s.env}. Check the address and that ${s.name} is running, then reload this page.`); continue; }
+      found.push(kind);
+      notes.splice(found.length - 1, 0, `Found ${s.name} ${version.split('-')[0]}.`);
+    }
+    if (!found.length && !notes.length) {
+      $('srvStatus').innerHTML = 'To send covers and posters straight to your server, start this container with <code>JELLYFIN_URL</code>, <code>EMBY_URL</code> or <code>PLEX_URL</code> set to its address, such as <code>http://192.168.1.10:8096</code>. Until then, download the file and upload it yourself.';
+      return;
+    }
+    $('srvStatus').textContent = notes.join(' ');
+    if (!found.length) return;
+    const tabs = $('srvTabs');
+    tabs.innerHTML = '';
+    for (const kind of found) {
+      const l = document.createElement('label');
+      l.innerHTML = `<input type="radio" name="srv" value="${kind}"> ${SERVERS[kind].name}`;
+      l.querySelector('input').addEventListener('change', e => e.target.checked && chooseServer(kind));
+      tabs.appendChild(l);
+    }
+    tabs.hidden = found.length < 2;
+    const last = local.get('libraryCoverMaker.server');
+    chooseServer(found.includes(last) ? last : found[0]);
   }
 
-  async function jfCheckServer() {
-    let r;
-    try { r = await fetch(JF + 'System/Info/Public'); }
-    catch { $('jfStatus').textContent = 'Send to Jellyfin works when this page is opened from the Library Cover Maker container. You can still download the file and upload it in Jellyfin yourself.'; return; }
-    if (r.status === 503) {
-      $('jfStatus').innerHTML = 'To send covers and posters straight to Jellyfin, start this container with <code>JELLYFIN_URL</code> set to your Jellyfin address, such as <code>http://192.168.1.10:8096</code>. Until then, download the file and upload it in Jellyfin yourself.';
-      return;
-    }
-    let info = null;
-    try { if (r.ok) info = await r.json(); } catch {}
-    if (!info || !info.Version) {
-      $('jfStatus').textContent = 'Can’t reach Jellyfin at the address in JELLYFIN_URL. Check the address and that Jellyfin is running, then reload this page.';
-      return;
-    }
-    $('jfStatus').textContent = `Found ${info.ServerName || 'Jellyfin'} (Jellyfin ${info.Version}).`;
+  function chooseServer(kind) {
+    srv = kind;
+    local.set('libraryCoverMaker.server', kind);
+    $('srvTabs').querySelectorAll('input').forEach(i => { i.checked = i.value === kind; });
+    const s = SERVERS[kind];
+    $('jfKeyLbl').textContent = s.keyLabel;
+    $('jfKeyHint').innerHTML = s.keyHint;
+    $('jfKey').value = local.get(KEY_STORE[kind]);
     $('jfBody').hidden = false;
-    $('jfKey').value = store.get();
+    Object.assign(conn, { ready: false, libs: [], item: null });
+    $('jfResults').innerHTML = ''; $('jfImg').hidden = true; jfMsg('');
+    jfShowMode();
     if ($('jfKey').value) jfConnect();
   }
 
+  // What can be sent depends on the server: Plex has no library pictures, and only Jellyfin and Emby
+  // stream a title's video for the page to cut moments from.
+  function jfShowMode() {
+    if (!srv) return;
+    const ready = conn.ready, plex = isPlex();
+    $('jfLibWrap').hidden = !ready || mode !== 'cover' || plex;
+    $('jfItemWrap').hidden = !ready || mode !== 'poster';
+    $('jfItemVideo').hidden = $('jfRandom').hidden = plex;
+    $('batch').hidden = !ready || plex;
+    const note = !ready ? ''
+      : plex && mode === 'cover' ? 'Plex has no pictures for libraries, so library covers can’t be sent to it. Switch to Poster to send film and series posters.'
+      : plex ? 'Plex shows every poster as a still picture, so choose Still PNG for the sharpest result.'
+      : srv === 'emby' ? 'Emby sends GIFs to its web page untouched, so choose GIF to keep covers and posters moving there.'
+      : '';
+    $('srvNote').textContent = note; $('srvNote').hidden = !note;
+    updateRestoreButtons();
+    if (ready && !plex) batchSetup();
+  }
+
   async function jfConnect() {
-    const key = $('jfKey').value.trim();
-    if (!key) { jfMsg('Paste an API key first.', 'bad'); return; }
+    const k = key();
+    if (!k) { jfMsg(`Paste ${isPlex() ? 'a token' : 'an API key'} first.`, 'bad'); return; }
     jfMsg('Connecting…');
     try {
-      const libs = await (await jfFetch('Library/VirtualFolders')).json();
-      store.set(key);
-      jf.libs = libs.filter(l => l.ItemId);
-      jf.ready = true;
+      if (isPlex()) {
+        const res = await srvJson('library/sections');
+        conn.libs = (res.MediaContainer?.Directory || []).map(d => ({ ItemId: d.key, Name: d.title, CollectionType: d.type }));
+      } else {
+        const libs = await srvJson('Library/VirtualFolders');
+        conn.libs = libs.filter(l => l.ItemId);
+      }
+      local.set(KEY_STORE[srv], k);
+      conn.ready = true;
       const sel = $('jfLib');
       sel.innerHTML = '<option value="">Choose a library…</option>';
-      for (const l of jf.libs) { const o = document.createElement('option'); o.value = l.ItemId; o.textContent = l.Name; sel.appendChild(o); }
-      jfMsg(`Connected. ${jf.libs.length} librar${jf.libs.length === 1 ? 'y' : 'ies'} found.`, 'ok');
+      for (const l of conn.libs) { const o = document.createElement('option'); o.value = l.ItemId; o.textContent = l.Name; sel.appendChild(o); }
+      jfMsg(`Connected to ${SERVERS[srv].name}. ${conn.libs.length} librar${conn.libs.length === 1 ? 'y' : 'ies'} found.`, 'ok');
     } catch (e) {
-      jf.ready = false;
+      conn.ready = false;
       jfMsg(e.message, 'bad');
     }
     jfShowMode();
@@ -950,35 +1114,66 @@ code { font-size: 12.5px; overflow-wrap: anywhere; }
   $('jfConnect').addEventListener('click', jfConnect);
   $('jfKey').addEventListener('keydown', e => { if (e.key === 'Enter') jfConnect(); });
 
+  const chosenLib = () => conn.libs.find(l => l.ItemId === $('jfLib').value);
   // Choosing a library fills in its name, ready to make its cover.
   $('jfLib').addEventListener('change', () => {
-    const lib = jf.libs.find(l => l.ItemId === $('jfLib').value);
+    const lib = chosenLib();
     if (lib) { $('title').value = lib.Name.toUpperCase(); redraw(); }
+    updateRestoreButtons();
   });
+
+  function chooseItem(it, b) {
+    conn.item = it;
+    $('jfResults').querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+    $('title').value = it.Name.toUpperCase(); redraw();
+    updateRestoreButtons();
+  }
+
+  function showResults(items) {
+    const ul = $('jfResults');
+    ul.innerHTML = items.length ? '' : '<li class="hint">Nothing found with that name.</li>';
+    for (const it of items) {
+      const li = document.createElement('li'), b = document.createElement('button');
+      b.type = 'button'; b.setAttribute('aria-pressed', 'false');
+      b.innerHTML = '<span class="nm"></span> <span class="sub"></span>';
+      b.querySelector('.nm').textContent = it.Name;
+      b.querySelector('.sub').textContent = [it.ProductionYear, it.Type === 'Series' ? 'Series' : 'Film'].filter(Boolean).join(' · ');
+      b.addEventListener('click', () => chooseItem(it, b));
+      li.appendChild(b); ul.appendChild(li);
+    }
+    return ul;
+  }
+
+  async function search(q) {
+    if (isPlex()) {
+      const res = await srvJson(`hubs/search?query=${encodeURIComponent(q)}&limit=20`);
+      return (res.MediaContainer?.Hub || []).flatMap(h => h.Metadata || [])
+        .filter(m => m.type === 'movie' || m.type === 'show')
+        .map(m => ({ Id: m.ratingKey, Name: m.title, ProductionYear: m.year, Type: m.type === 'show' ? 'Series' : 'Movie' }));
+    }
+    const res = await srvJson(`Items?searchTerm=${encodeURIComponent(q)}&IncludeItemTypes=Movie,Series&Recursive=true&Limit=20&Fields=ProductionYear,Path,MediaSources`);
+    return res.Items || [];
+  }
 
   $('jfSearchForm').addEventListener('submit', async e => {
     e.preventDefault();
     const q = $('jfSearch').value.trim(), ul = $('jfResults');
     if (!q) return;
     ul.innerHTML = '<li class="hint">Searching…</li>';
+    try { showResults(await search(q)); }
+    catch (err) { ul.innerHTML = ''; jfMsg(err.message, 'bad'); }
+  });
+
+  // A random film or series to try the settings on, like the plugin's preview.
+  $('jfRandom').addEventListener('click', async () => {
     try {
-      const res = await (await jfFetch(`Items?searchTerm=${encodeURIComponent(q)}&IncludeItemTypes=Movie,Series&Recursive=true&Limit=20&Fields=ProductionYear`)).json();
-      const items = res.Items || [];
-      ul.innerHTML = items.length ? '' : '<li class="hint">Nothing found with that name.</li>';
-      for (const it of items) {
-        const li = document.createElement('li'), b = document.createElement('button');
-        b.type = 'button'; b.setAttribute('aria-pressed', 'false');
-        b.innerHTML = '<span class="nm"></span> <span class="sub"></span>';
-        b.querySelector('.nm').textContent = it.Name;
-        b.querySelector('.sub').textContent = [it.ProductionYear, it.Type === 'Series' ? 'Series' : 'Film'].filter(Boolean).join(' · ');
-        b.addEventListener('click', () => {
-          jf.item = it;
-          ul.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
-          $('title').value = it.Name.toUpperCase(); redraw();
-        });
-        li.appendChild(b); ul.appendChild(li);
-      }
-    } catch (err) { ul.innerHTML = ''; jfMsg(err.message, 'bad'); }
+      const res = await srvJson('Items?IncludeItemTypes=Movie,Series&Recursive=true&SortBy=Random&Limit=1&Fields=ProductionYear,Path,MediaSources');
+      const it = (res.Items || [])[0];
+      if (!it) { jfMsg('No films or series found.', 'bad'); return; }
+      const ul = showResults([it]);
+      chooseItem(it, ul.querySelector('button'));
+      loadServerMoments(it, $('jfRandom'));
+    } catch (e) { jfMsg(e.message, 'bad'); }
   });
 
   const blobToBase64 = blob => new Promise((res, rej) => {
@@ -988,31 +1183,435 @@ code { font-size: 12.5px; overflow-wrap: anywhere; }
     fr.readAsDataURL(blob);
   });
 
-  // Jellyfin takes a new image as base64 text in the body, with the picture's own type.
+  // Jellyfin and Emby take a new image as base64 text in the body, with the picture's own type.
+  // Plex takes the picture itself, and uses it as the selected poster.
+  async function upload(id, blob) {
+    if (isPlex()) await srvFetch(`library/metadata/${id}/posters`, { method: 'POST', headers: { 'Content-Type': blob.type }, body: blob });
+    else await srvFetch(`Items/${id}/Images/Primary`, { method: 'POST', headers: { 'Content-Type': blob.type }, body: await blobToBase64(blob) });
+  }
+
+  async function imageUrl(id) {
+    if (!isPlex()) return `${SERVERS[srv].base}Items/${id}/Images/Primary?t=${Date.now()}`;
+    const res = await srvJson(`library/metadata/${id}`);
+    const thumb = res.MediaContainer?.Metadata?.[0]?.thumb;
+    return thumb ? `${SERVERS[srv].base}${thumb.replace(/^\//, '')}?X-Plex-Token=${encodeURIComponent(key())}` : '';
+  }
+
   async function jfSend(id, name, what, btn) {
     if (!lastResult || lastResult.mode !== mode) { jfMsg(`Make the ${what} first, then send it.`, 'bad'); return; }
-    const { blob, format } = lastResult;
+    const { blob, format } = lastResult, server = SERVERS[srv].name;
     btn.disabled = true; jfMsg(`Sending to ${name}…`); $('jfImg').hidden = true;
     try {
-      await jfFetch(`Items/${id}/Images/Primary`, { method: 'POST', headers: { 'Content-Type': blob.type }, body: await blobToBase64(blob) });
-      const still = format === 'webp' ? ' It’s a WebP, so the Jellyfin apps will show it as a still picture; make a GIF to keep it moving there.' : '';
-      jfMsg(`Done: ${name} now uses this ${what} as its image (${fmtSize(blob.size)}). Refresh Jellyfin to see it.${still}`, 'ok');
-      $('jfImg').src = `${JF}Items/${id}/Images/Primary?t=${Date.now()}`;
-      $('jfImg').hidden = false;
+      if (!isPlex()) await keepOriginal(id, name, what);
+      await upload(id, blob);
+      if (!isPlex()) await remember(id, name, what, blob.size);
+      const still = format !== 'webp' || isPlex() ? '' : srv === 'jellyfin' ? ' It’s a WebP, so the Jellyfin apps will show it as a still picture; make a GIF to keep it moving there.'
+        : ' It’s a WebP, which Emby may show as a still picture; make a GIF to keep it moving.';
+      jfMsg(`Done: ${name} now uses this ${what} as its image on ${server} (${fmtSize(blob.size)}). Refresh ${server} to see it.${still}`, 'ok');
+      const url = await imageUrl(id).catch(() => '');
+      if (url) { $('jfImg').src = url; $('jfImg').hidden = false; }
     } catch (e) {
       jfMsg(`Couldn’t send it: ${e.message}`, 'bad');
-    } finally { btn.disabled = false; }
+    } finally { btn.disabled = false; updateRestoreButtons(); }
   }
   $('jfSendLib').addEventListener('click', () => {
-    const lib = jf.libs.find(l => l.ItemId === $('jfLib').value);
+    const lib = chosenLib();
     if (!lib) { jfMsg('Choose a library first.', 'bad'); return; }
     jfSend(lib.ItemId, lib.Name, 'cover', $('jfSendLib'));
   });
   $('jfSendItem').addEventListener('click', () => {
-    if (!jf.item) { jfMsg('Search for the film or series and click it first.', 'bad'); return; }
-    jfSend(jf.item.Id, jf.item.Name, 'poster', $('jfSendItem'));
+    if (!conn.item) { jfMsg('Search for the film or series and click it first.', 'bad'); return; }
+    jfSend(conn.item.Id, conn.item.Name, 'poster', $('jfSendItem'));
   });
-  jfCheckServer();
+
+  // ---- The container's /data folder: each title's own picture, and what was sent ----
+  // Before the first cover or poster replaces a picture on Jellyfin or Emby, the picture it had is
+  // saved in /data/originals, so Put back can bring it back. /data/state.json lists what was sent,
+  // with the image tag the server gave it, so the missing ones can be told apart.
+  const DATA = 'data/';
+  const vault = { ok: false, state: {} };
+  const records = () => (vault.state[srv] ||= {});
+  async function vaultInit() {
+    try {
+      const dir = await fetch(DATA, { headers: { Accept: 'application/json' } });
+      if (!dir.ok) return;
+      const probe = await fetch(DATA + '.write-test', { method: 'PUT', body: 'ok' });
+      if (!probe.ok) return;
+      await fetch(DATA + '.write-test', { method: 'DELETE' }).catch(() => {});
+      const r = await fetch(DATA + 'state.json', { cache: 'no-store' });
+      if (r.ok) vault.state = await r.json();
+      vault.ok = true;
+    } catch {}
+  }
+  async function saveState() {
+    const r = await fetch(DATA + 'state.json', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(vault.state) });
+    if (!r.ok) throw new Error(`couldn’t save the list of what was sent in /data (${r.status})`);
+  }
+  const originalPath = id => `${DATA}originals/${srv}/${encodeURIComponent(id)}`;
+
+  async function keepOriginal(id, name, what) {
+    if (!vault.ok || records()[id]) return;
+    let original = 'none', type = '';
+    // Emby answers a request for a missing picture with an error, so look at the item's pictures first.
+    const has = await currentTag(id);
+    const r = has ? await fetch(`${SERVERS[srv].base}Items/${id}/Images/Primary`, { headers: authHeaders() }) : { ok: false, status: 404 };
+    if (r.ok) {
+      const blob = await r.blob();
+      const put = await fetch(originalPath(id), { method: 'PUT', body: blob });
+      if (!put.ok) throw new Error(`couldn’t keep a copy of its own picture in /data (${put.status}), so nothing was changed`);
+      original = 'saved'; type = blob.type;
+    } else if (r.status !== 404) throw new Error(`couldn’t read its own picture to keep a copy (${r.status}), so nothing was changed`);
+    records()[id] = { name, what, original, type };
+  }
+
+  async function currentTag(id) {
+    const res = await srvJson(`Items?Ids=${id}&Fields=ImageTags`);
+    return res.Items?.[0]?.ImageTags?.Primary || '';
+  }
+
+  async function remember(id, name, what, size) {
+    if (!vault.ok) return;
+    const rec = records()[id] ||= { name, what, original: 'unknown' };
+    Object.assign(rec, { tag: await currentTag(id).catch(() => ''), size, at: new Date().toISOString() });
+    await saveState();
+  }
+
+  async function putBack(id) {
+    const rec = records()[id];
+    if (!rec) return;
+    if (rec.original === 'saved') {
+      const r = await fetch(originalPath(id), { cache: 'no-store' });
+      if (!r.ok) throw new Error(`its own picture is missing from /data (${r.status})`);
+      const blob = await r.blob();
+      await upload(id, new Blob([blob], { type: rec.type || blob.type || 'image/jpeg' }));
+      await fetch(originalPath(id), { method: 'DELETE' }).catch(() => {});
+    } else if (rec.original === 'none') {
+      await srvFetch(`Items/${id}/Images/Primary`, { method: 'DELETE' });
+    } else throw new Error('its own picture wasn’t kept');
+    delete records()[id];
+    await saveState();
+  }
+
+  function updateRestoreButtons() {
+    const has = id => vault.ok && !isPlex() && id && records()[id] && records()[id].original !== 'unknown';
+    $('jfLibRestore').hidden = !has(chosenLib()?.ItemId);
+    $('jfItemRestore').hidden = !has(conn.item?.Id);
+  }
+  async function restoreOne(id, name, btn) {
+    btn.disabled = true; jfMsg(`Putting back ${name}’s own picture…`);
+    try {
+      await putBack(id);
+      jfMsg(`Done: ${name} has its own picture back.`, 'ok');
+      const url = await imageUrl(id).catch(() => '');
+      $('jfImg').hidden = !url; if (url) $('jfImg').src = url;
+    } catch (e) { jfMsg(`Couldn’t put it back: ${e.message}`, 'bad'); }
+    finally { btn.disabled = false; updateRestoreButtons(); }
+  }
+  $('jfLibRestore').addEventListener('click', () => { const l = chosenLib(); if (l) restoreOne(l.ItemId, l.Name, $('jfLibRestore')); });
+  $('jfItemRestore').addEventListener('click', () => { if (conn.item) restoreOne(conn.item.Id, conn.item.Name, $('jfItemRestore')); });
+
+  // ---- Moments from the server's own videos (Jellyfin and Emby) ----
+  // A film is cut at a few moments between 15% and 75% of the way through, past the opening titles
+  // and before the credits. A series gives one moment from each of a few random episodes, and a
+  // library one moment from each of a few random things in it. The browser plays the file as it is
+  // when it can; otherwise (and for HDR, so the colours aren't washed out) the server converts a
+  // few seconds from each moment.
+  const VIDEO_TYPES = 'Movie,Episode,Video,MusicVideo';
+  const FIELDS = 'Path,MediaSources,ImageTags';
+  function whyNot(it) {
+    if (/\.strm$/i.test(it.Path || '') || (it.MediaSources || []).some(m => m.IsRemote)) return 'it’s a stream, and cutting moments from one opens several connections to the provider at once';
+    if (it.LocationType === 'Virtual' || it.IsPlaceHolder) return 'its file isn’t on the server';
+    if (it.VideoType && it.VideoType !== 'VideoFile') return 'it’s a disc folder';
+    if (!(it.MediaSources || []).length) return 'it has no video file';
+    return '';
+  }
+  const spread = (n, i) => 0.15 + 0.6 * (i + 0.25 + Math.random() * 0.5) / n;
+
+  async function videosFor(target, n) {
+    if (target.Type === 'Movie' || target.Type === 'Video' || target.Type === 'MusicVideo' || target.Type === 'Episode') return [target];
+    const parent = target.Type === 'Series' ? target.Id : target.ItemId || target.Id;
+    const types = target.Type === 'Series' ? 'Episode' : VIDEO_TYPES;
+    const res = await srvJson(`Items?ParentId=${parent}&Recursive=true&IncludeItemTypes=${types}&SortBy=Random&Limit=${n * 4}&Fields=${FIELDS}`);
+    return (res.Items || []).filter(it => !whyNot(it));
+  }
+
+  function openVideo(url, name, needSeconds) {
+    return new Promise(resolve => {
+      const v = document.createElement('video');
+      v.muted = true; v.playsInline = true; v.preload = 'auto'; v.src = url;
+      const give = ok => { clearTimeout(timer); if (!ok) { v.removeAttribute('src'); v.load(); } resolve(ok ? { el: v, isVideo: true, name, url: null, start: null } : null); };
+      const timer = setTimeout(() => give(false), 45000);
+      v.addEventListener('error', () => give(false), { once: true });
+      v.addEventListener('loadeddata', () => {
+        if (!v.videoWidth) { give(false); return; }
+        if (!needSeconds) { give(true); return; }
+        // A converted clip arrives as it's made, and the browser only keeps fetching it while it
+        // plays: play it silently until enough of it is here, then stop.
+        const enough = () => v.buffered.length && v.buffered.end(v.buffered.length - 1) >= needSeconds - 0.05;
+        const done = () => { v.pause(); v.removeEventListener('progress', check); v.removeEventListener('timeupdate', check); give(true); };
+        const check = () => { if (enough()) done(); };
+        if (enough()) { done(); return; }
+        v.addEventListener('progress', check);
+        v.addEventListener('timeupdate', check);
+        v.addEventListener('ended', done, { once: true });
+        v.play().catch(() => {});
+      }, { once: true });
+    });
+  }
+
+  const canMp4 = () => !!document.createElement('video').canPlayType('video/mp4; codecs="avc1.42E01E"');
+  function clipUrl(it, ms, t, seconds) {
+    const [ext, vc, ac] = canMp4() ? ['mp4', 'h264', 'aac'] : ['webm', 'vp8', 'vorbis'];
+    const q = new URLSearchParams({
+      MediaSourceId: ms.Id, api_key: key(), VideoCodec: vc, AudioCodec: ac, MaxWidth: '960', VideoBitrate: '4000000',
+      AudioBitrate: '64000', StartTimeTicks: String(Math.round(t * 1e7)), DeviceId: 'library-cover-maker',
+      PlaySessionId: Math.random().toString(36).slice(2), MaxStreamingBitrate: '8000000',
+    });
+    return `${SERVERS[srv].base}Videos/${it.Id}/stream.${ext}?${q}`;
+  }
+
+  // Tell the server to stop converting a clip we're done with, rather than leaving it running
+  // until the server's own timer gives up on it.
+  function stopClip(url) {
+    const q = new URL(url, location.href).searchParams;
+    const base = url.slice(0, url.indexOf('Videos/'));
+    fetch(`${base}Videos/ActiveEncodings?DeviceId=${q.get('DeviceId')}&PlaySessionId=${q.get('PlaySessionId')}&api_key=${q.get('api_key')}`, { method: 'DELETE' }).catch(() => {});
+  }
+
+  // Sources for one video: n moments, sharing one <video> when the browser can play the file.
+  async function momentsOf(it, n, secondsEach) {
+    const ms = it.MediaSources[0];
+    const dur = (ms.RunTimeTicks || it.RunTimeTicks || 0) / 1e7;
+    const hdr = (ms.MediaStreams || []).some(s => s.Type === 'Video' && s.VideoRange && s.VideoRange !== 'SDR');
+    if (!hdr) {
+      const q = new URLSearchParams({ static: 'true', MediaSourceId: ms.Id, api_key: key() });
+      const direct = await openVideo(`${SERVERS[srv].base}Videos/${it.Id}/stream?${q}`, it.Name, 0);
+      if (direct) {
+        const d = Number.isFinite(direct.el.duration) ? direct.el.duration : dur;
+        const out = [];
+        for (let i = 0; i < n; i++) out.push({ ...direct, start: d * spread(n, i) });
+        await seekTo(direct.el, out[0].start);
+        out.forEach((s, i) => { s.shared = i > 0; });
+        return out;
+      }
+    }
+    if (!dur) throw new Error('the server doesn’t know how long it is');
+    const out = [];
+    for (let i = 0; i < n; i++) {
+      // A busy server sometimes drops a conversion, so give each moment a second try.
+      let s = null;
+      for (let tries = 0; !s && tries < 2; tries++) {
+        const url = clipUrl(it, ms, dur * spread(n, i), secondsEach + 1);
+        s = await openVideo(url, it.Name, secondsEach + 0.5);
+        if (s) s.clip = url; else stopClip(url);
+      }
+      if (!s) { out.forEach(releaseSource); throw new Error('this browser can’t play it and the server couldn’t convert it'); }
+      s.start = 0;
+      out.push(s);
+    }
+    return out;
+  }
+
+  // Moments for a film, series or library: n in all, one per episode or title when there are several.
+  async function serverSources(target) {
+    const n = +$('clips').value, secondsEach = +$('len').value / n;
+    const reason = target.Type === 'Movie' || target.Type === 'Video' || target.Type === 'MusicVideo' ? whyNot(target) : '';
+    if (reason) throw new Error(reason);
+    const vids = await videosFor(target, n);
+    const none = target.Type === 'Series' ? 'none of its episodes can be used' : 'nothing in it can be used';
+    if (!vids.length) throw new Error(none);
+    if (vids.length === 1) return momentsOf(vids[0], n, secondsEach);
+    // One moment from each of n episodes or titles, skipping any that can't be opened.
+    const sources = [];
+    let last = null;
+    for (const v of vids) {
+      if (sources.length >= n) break;
+      try { sources.push(...await momentsOf(v, 1, secondsEach)); }
+      catch (e) { last = e; }
+    }
+    if (!sources.length) throw last || new Error(none);
+    return sources;
+  }
+  const releaseAll = list => list.forEach(s => !s.shared && releaseSource(s));
+
+  async function loadServerMoments(target, btn) {
+    btn.disabled = true; jfMsg(`Getting moments from ${target.Name}…`);
+    try {
+      const sources = await serverSources(target);
+      state.pool = []; clearSources();
+      state.sources = sources; state.active = 0; state.ox = state.oy = 0;
+      renderSources([]); redraw();
+      jfMsg(`Using ${sources.length} moment${sources.length > 1 ? 's' : ''} from ${target.Name}. Make it to see it, then send it.`, 'ok');
+    } catch (e) { jfMsg(`Couldn’t use ${target.Name}: ${e.message}.`, 'bad'); }
+    finally { btn.disabled = false; }
+  }
+  $('jfItemVideo').addEventListener('click', () => {
+    if (!conn.item) { jfMsg('Search for the film or series and click it first.', 'bad'); return; }
+    loadServerMoments(conn.item, $('jfItemVideo'));
+  });
+  $('jfLibVideo').addEventListener('click', () => {
+    const lib = chosenLib();
+    if (!lib) { jfMsg('Choose a library first.', 'bad'); return; }
+    loadServerMoments({ ...lib, Name: lib.Name }, $('jfLibVideo'));
+  });
+
+  // ---- Every film and series, or every library, in one go (Jellyfin and Emby) ----
+  // It runs in this browser, so keep the page open while it works. It uses the look set on the
+  // right (font, text size, frame and so on) and the file settings, with each title's own name.
+  const VIDEO_LIBS = new Set(['movies', 'tvshows', 'homevideos', 'musicvideos', 'mixed', '', undefined, null]);
+  const batch = { running: false, stop: false, counts: {} };
+  const excludedKey = () => `libraryCoverMaker.${srv}.excluded`;
+  const excluded = () => new Set(JSON.parse(local.get(excludedKey(), '[]')));
+  const batchLibs = () => conn.libs.filter(l => VIDEO_LIBS.has(l.CollectionType));
+  const tickedLibs = () => { const ex = excluded(); return batchLibs().filter(l => !ex.has(l.ItemId)); };
+
+  function batchSetup() {
+    const poster = mode === 'poster';
+    $('batchTitle').textContent = poster ? 'Posters for every film and series' : 'Covers for every library';
+    $('batchIntro').textContent = (poster
+      ? 'Makes a poster for each film and series in the ticked libraries from moments of its own video, with its title, and sends it.'
+      : 'Makes a cover for each ticked library from moments of a few random things in it, with the library’s name, and sends it.')
+      + ' It uses the look and file settings on this page. Keep this page open while it works.'
+      + (vault.ok ? ' Each one’s own picture is kept in /data, so you can put it back.' : ' Map a folder to /data in the container to keep each one’s own picture so you can put it back; until then this can’t run.');
+    const ul = $('batchLibs'), ex = excluded();
+    ul.innerHTML = '';
+    for (const l of batchLibs()) {
+      const li = document.createElement('li');
+      li.innerHTML = '<label class="check"><input type="checkbox"> <span></span></label>';
+      const box = li.querySelector('input');
+      box.checked = !ex.has(l.ItemId);
+      li.querySelector('span').textContent = l.Name;
+      box.addEventListener('change', () => {
+        const now = excluded();
+        box.checked ? now.delete(l.ItemId) : now.add(l.ItemId);
+        local.set(excludedKey(), JSON.stringify([...now]));
+        batchCount();
+      });
+      ul.appendChild(li);
+    }
+    if (!batchLibs().length) ul.innerHTML = '<li class="hint">No libraries with videos found.</li>';
+    $('batchNew').disabled = $('batchAll').disabled = !vault.ok || batch.running;
+    $('batchRestore').disabled = !vault.ok || batch.running;
+    batchCount();
+  }
+
+  async function batchCount() {
+    if (!conn.ready || isPlex()) return;
+    const ids = new Set();
+    if (mode === 'poster') {
+      for (const l of tickedLibs()) {
+        const res = await srvJson(`Items?ParentId=${l.ItemId}&Recursive=true&IncludeItemTypes=Movie,Series,Video,MusicVideo&EnableImages=false`).catch(() => null);
+        for (const it of res?.Items || []) ids.add(it.Id);
+      }
+    } else tickedLibs().forEach(l => ids.add(l.ItemId));
+    batch.counts[mode] = ids;
+    batchEstimate();
+  }
+
+  function batchEstimate() {
+    if (!conn.ready || isPlex() || !srv) return;
+    const what = mode, ids = batch.counts[what];
+    if (!ids) { $('batchEstimate').textContent = ''; return; }
+    const total = ids.size;
+    const done = Object.entries(records()).filter(([id, r]) => r.what === what && r.size && ids.has(id)).map(([, r]) => r);
+    const left = Math.max(0, total - done.length);
+    const sizes = done.map(r => r.size);
+    if (lastResult && lastResult.mode === what && lastResult.format === $('format').value) sizes.push(lastResult.blob.size);
+    const each = sizes.length ? sizes.reduce((a, b) => a + b, 0) / sizes.length : 0;
+    const used = done.reduce((a, r) => a + r.size, 0);
+    const noun = what === 'poster' ? ['film or series', 'films and series'] : ['library', 'libraries'];
+    let text = `${total} ${total === 1 ? noun[0] : noun[1]} ticked. ${done.length} made from here so far${used ? `, using ${fmtSize(used)}` : ''}. ${left} still to make`;
+    text += each ? `, about ${fmtSize(each * left)} at about ${fmtSize(each)} each. Making them all again would come to about ${fmtSize(each * total)}.` : '. Make one first to see roughly how big they’ll be.';
+    $('batchEstimate').textContent = text;
+  }
+
+  function batchMsg(text, kind) {
+    const m = $('batchMsg');
+    m.textContent = text; m.className = 'msg' + (kind ? ' ' + kind : ''); m.hidden = !text;
+  }
+
+  async function batchTargets() {
+    if (mode === 'cover') return tickedLibs().map(l => ({ ...l, Id: l.ItemId, Type: 'Library' }));
+    const seen = new Map();
+    for (const l of tickedLibs()) {
+      for (let start = 0; ; start += 200) {
+        const res = await srvJson(`Items?ParentId=${l.ItemId}&Recursive=true&IncludeItemTypes=Movie,Series,Video,MusicVideo&Fields=${FIELDS}&SortBy=SortName&StartIndex=${start}&Limit=200`);
+        for (const it of res.Items || []) seen.set(it.Id, it);
+        if (start + 200 >= (res.TotalRecordCount || 0)) break;
+      }
+    }
+    return [...seen.values()];
+  }
+
+  async function runBatch(again) {
+    if (batch.running || !vault.ok) return;
+    if (again && !confirm(`Make every ${mode} again? This replaces the ones made from here and any you changed yourself since. Their own pictures stay kept, so Put back still works.`)) return;
+    const what = mode, fails = $('batchFails');
+    batch.running = true; batch.stop = false;
+    $('batchStop').hidden = false; $('batchNew').disabled = $('batchAll').disabled = $('batchRestore').disabled = true;
+    document.querySelector('.rail').inert = true; $('make').disabled = true;
+    fails.innerHTML = '';
+    const keepTitle = $('title').value, keepSources = state.sources, keepActive = state.active, [kox, koy] = [state.ox, state.oy];
+    let made = 0, skipped = 0, failed = 0;
+    try {
+      batchMsg('Finding what to make…');
+      const targets = await batchTargets();
+      for (const [i, t] of targets.entries()) {
+        if (batch.stop) break;
+        const rec = records()[t.Id];
+        if (rec && !again) { skipped++; continue; } // made from here, or changed by hand since: left alone
+        batchMsg(`${i + 1} of ${targets.length}: ${t.Name}…`);
+        let sources = [];
+        try {
+          sources = await serverSources(t);
+          state.sources = sources; state.ox = state.oy = 0;
+          $('title').value = t.Name.toUpperCase();
+          const res = await render(sources, (m, n) => batchMsg(`${i + 1} of ${targets.length}: ${t.Name}, frame ${m} of ${n}…`));
+          await keepOriginal(t.Id, t.Name, what);
+          await upload(t.Id, res.blob);
+          await remember(t.Id, t.Name, what, res.blob.size);
+          made++;
+        } catch (e) {
+          failed++;
+          const li = document.createElement('li'); li.textContent = `${t.Name}: ${e.status ? e.message : renderError(e).replace('Something went wrong making it: ', '')}`;
+          fails.appendChild(li);
+        } finally { releaseAll(sources); }
+      }
+      const parts = [`${made} made and sent`];
+      if (skipped) parts.push(`${skipped} already made from here or changed by hand, left alone`);
+      if (failed) parts.push(`${failed} couldn’t be made (listed below)`);
+      batchMsg((batch.stop ? 'Stopped. ' : 'Finished. ') + parts.join(', ') + '. Refresh your server to see them.', failed ? 'bad' : 'ok');
+    } catch (e) {
+      batchMsg(`Stopped: ${e.message}`, 'bad');
+    } finally {
+      batch.running = false;
+      state.sources = keepSources; state.active = keepActive; state.ox = kox; state.oy = koy;
+      $('title').value = keepTitle;
+      document.querySelector('.rail').inert = false; $('make').disabled = false;
+      $('batchStop').hidden = true;
+      batchSetup(); updateRestoreButtons(); redraw();
+    }
+  }
+  $('batchNew').addEventListener('click', () => runBatch(false));
+  $('batchAll').addEventListener('click', () => runBatch(true));
+  $('batchStop').addEventListener('click', () => { batch.stop = true; batchMsg('Stopping after this one…'); });
+  $('batchRestore').addEventListener('click', async () => {
+    const what = mode, ids = Object.entries(records()).filter(([, r]) => r.what === what).map(([id]) => id);
+    if (!ids.length) { batchMsg(`No ${what}s were sent from here, so there’s nothing to put back.`); return; }
+    if (!confirm(`Put back the original pictures of ${ids.length} ${what === 'poster' ? 'films and series' : 'libraries'}?`)) return;
+    $('batchRestore').disabled = true;
+    let ok = 0; const fails = $('batchFails'); fails.innerHTML = '';
+    for (const id of ids) {
+      const name = records()[id]?.name || id;
+      batchMsg(`Putting back ${name}…`);
+      try { await putBack(id); ok++; }
+      catch (e) { const li = document.createElement('li'); li.textContent = `${name}: ${e.message}`; fails.appendChild(li); }
+    }
+    batchMsg(`Put back ${ok} of ${ids.length}. Refresh your server to see them.`, ok === ids.length ? 'ok' : 'bad');
+    batchSetup(); updateRestoreButtons();
+  });
+
+  vaultInit().then(checkServers);
 })();
 </script>
 

@@ -1,13 +1,28 @@
 # This file is a template: when the container starts, nginx's entrypoint fills in
-# ${JELLYFIN_URL} and ${NGINX_LOCAL_RESOLVERS} and writes it to /etc/nginx/conf.d/default.conf.
+# ${JELLYFIN_URL}, ${EMBY_URL}, ${PLEX_URL} and ${NGINX_LOCAL_RESOLVERS} and writes it to
+# /etc/nginx/conf.d/default.conf.
 
-# JELLYFIN_URL without any trailing slash, e.g. http://192.168.1.10:8096
+# Each server's address without any trailing slash, e.g. http://192.168.1.10:8096
 map "${JELLYFIN_URL}" $jellyfin_base {
     "~^(?<base>.*?)/*$" $base;
 }
-# The rest of the address after /jellyfin, still encoded and with its query string
+map "${EMBY_URL}" $emby_base {
+    "~^(?<base>.*?)/*$" $base;
+}
+map "${PLEX_URL}" $plex_base {
+    "~^(?<base>.*?)/*$" $base;
+}
+# The rest of the address after /jellyfin, /emby or /plex, still encoded and with its query string
 map $request_uri $jellyfin_path {
     "~^/jellyfin(?<rest>/.*)$" $rest;
+    default /;
+}
+map $request_uri $emby_path {
+    "~^/emby(?<rest>/.*)$" $rest;
+    default /;
+}
+map $request_uri $plex_path {
+    "~^/plex(?<rest>/.*)$" $rest;
     default /;
 }
 
@@ -28,8 +43,9 @@ server {
         autoindex_format json;
     }
 
-    # "Send to Jellyfin": the page talks to Jellyfin through here, so the browser
-    # sees one address and Jellyfin needs no CORS settings.
+    # "Send to your server": the page talks to Jellyfin, Emby and Plex through here, so the
+    # browser sees one address and the servers need no CORS settings. Videos are passed on
+    # as they arrive, so the page can cut moments from a title's own video.
     location /jellyfin/ {
         default_type application/json;
         if ($jellyfin_base = "") {
@@ -37,7 +53,43 @@ server {
         }
         resolver ${NGINX_LOCAL_RESOLVERS} valid=30s;
         client_max_body_size 64m;
-        proxy_read_timeout 120s;
+        proxy_read_timeout 300s;
+        proxy_buffering off;
         proxy_pass $jellyfin_base$jellyfin_path;
+    }
+
+    location /emby/ {
+        default_type application/json;
+        if ($emby_base = "") {
+            return 503 '{"notConfigured":true}';
+        }
+        resolver ${NGINX_LOCAL_RESOLVERS} valid=30s;
+        client_max_body_size 64m;
+        proxy_read_timeout 300s;
+        proxy_buffering off;
+        proxy_pass $emby_base$emby_path;
+    }
+
+    location /plex/ {
+        default_type application/json;
+        if ($plex_base = "") {
+            return 503 '{"notConfigured":true}';
+        }
+        resolver ${NGINX_LOCAL_RESOLVERS} valid=30s;
+        client_max_body_size 64m;
+        proxy_read_timeout 120s;
+        proxy_pass $plex_base$plex_path;
+    }
+
+    # Map a folder to /data to keep each title's own picture before it's replaced, so it can
+    # be put back, and the list of what was sent. The page reads and writes it here.
+    location /data/ {
+        alias /data/;
+        autoindex on;
+        autoindex_format json;
+        dav_methods PUT DELETE;
+        create_full_put_path on;
+        client_max_body_size 64m;
+        client_body_temp_path /data/.uploads;
     }
 }

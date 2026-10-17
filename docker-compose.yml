@@ -7,8 +7,13 @@ services:
     volumes:
       # Your media, read-only. Map as many folders as you like under /media.
       - /path/to/media:/media:ro
+      # Optional: keeps each title's own picture before it's replaced, so it can be put back.
+      # Needed for making covers and posters for everything in one go.
+      - /path/to/appdata/library-cover-maker:/data
     environment:
-      # Optional: your Jellyfin address, so the page can send covers and posters straight to it.
-      # Leave it out to only download them.
+      # Optional: your server addresses, so the page can send covers and posters straight to them.
+      # Leave out the ones you don't use, or all of them to only download.
       - JELLYFIN_URL=http://192.168.1.10:8096
+      - EMBY_URL=http://192.168.1.11:8096
+      - PLEX_URL=http://192.168.1.10:32400
     restart: unless-stopped
