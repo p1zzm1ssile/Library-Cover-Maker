@@ -111,7 +111,9 @@ Some things can't be used, and the page says why: streams (`.strm` files and oth
 
 ### Put back the original
 
-With `/data` mapped, the page saves each title's or library's own picture before replacing it. **Put back its own poster** and **Put back its own picture** appear once something has been sent, and return it to how it was.
+With `/data` mapped, the page saves each title's or library's own picture before replacing it. **Put back its own poster** and **Put back its own picture** appear once something has been sent, and return it to how it was. The picture made here is replaced, including the copy your server saves next to your media if it's set to save artwork into media folders.
+
+If a title had no picture of its own, or the copy kept for it is animated (an earlier version could keep a poster it had made as the original if the page was reloaded mid-send), Put back removes the picture made here and asks your server to fetch the title's own artwork again.
 
 ### Posters for every film and series, or a cover for every library
 
@@ -120,10 +122,10 @@ With `/data` mapped and a Jellyfin or Emby server connected, open **Posters for 
 1. Untick any libraries you want left out. The page remembers that for next time.
 2. It shows how many there are, how many it's already made, and roughly how much space the rest will take, once you've made one to measure.
 3. **Make the missing ones** makes and sends one for each title it hasn't done before, using the look and file settings on the page. Titles with a poster you've changed by hand since are left alone. **Make them all again** remakes every one with new random moments.
-4. **Stop** stops after the current one. Anything that couldn't be made is listed with the reason.
+4. While it works it shows which one it's on and, once one is made, roughly how much time is left. **Stop** stops after the current one. Anything that couldn't be made is listed with the reason.
 5. **Put back all the originals** returns every title or library it has changed.
 
-It runs in your browser, so keep the page open while it works. It doesn't run on a timer by itself.
+It runs in your browser. If the page is reloaded or closed, it carries on from where it got to the next time you open the page, with the same settings. It doesn't run on a timer by itself.
 
 ### Plex
 

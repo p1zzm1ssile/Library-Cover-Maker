@@ -1109,7 +1109,9 @@ code { font-size: 12.5px; overflow-wrap: anywhere; }
       conn.ready = false;
       jfMsg(e.message, 'bad');
     }
+    if (conn.ready) await adoptOrphans().catch(() => {});
     jfShowMode();
+    resumeBatch();
   }
   $('jfConnect').addEventListener('click', jfConnect);
   $('jfKey').addEventListener('keydown', e => { if (e.key === 'Enter') jfConnect(); });
@@ -1251,6 +1253,14 @@ code { font-size: 12.5px; overflow-wrap: anywhere; }
 
   async function keepOriginal(id, name, what) {
     if (!vault.ok || records()[id]) return;
+    // A copy already kept here (the page was closed between keeping it and noting it down) is the
+    // real original: the picture on the server now may be one made here, so don't copy over it.
+    const kept = await fetch(originalPath(id), { method: 'HEAD', cache: 'no-store' }).catch(() => null);
+    if (kept?.ok) {
+      records()[id] = { name, what, original: 'saved', type: '' };
+      await saveState();
+      return;
+    }
     let original = 'none', type = '';
     // Emby answers a request for a missing picture with an error, so look at the item's pictures first.
     const has = await currentTag(id);
@@ -1262,6 +1272,7 @@ code { font-size: 12.5px; overflow-wrap: anywhere; }
       original = 'saved'; type = blob.type;
     } else if (r.status !== 404) throw new Error(`couldn’t read its own picture to keep a copy (${r.status}), so nothing was changed`);
     records()[id] = { name, what, original, type };
+    await saveState(); // noted down before anything is sent, so a reload can't lose it
   }
 
   async function currentTag(id) {
@@ -1276,24 +1287,61 @@ code { font-size: 12.5px; overflow-wrap: anywhere; }
     await saveState();
   }
 
+  // /data serves kept pictures without a type, so read it from the first bytes.
+  async function sniffType(blob) {
+    const b = new Uint8Array(await blob.slice(0, 12).arrayBuffer());
+    const at = (i, t) => [...t].every((c, j) => b[i + j] === c.charCodeAt(0));
+    return at(0, 'GIF8') ? 'image/gif' : at(0, 'RIFF') && at(8, 'WEBP') ? 'image/webp' : at(1, 'PNG') ? 'image/png'
+      : b[0] === 0xff && b[1] === 0xd8 ? 'image/jpeg' : '';
+  }
+
+  // Puts back the picture kept in /data. When there wasn't one, or the kept one is itself animated
+  // (so most likely one made here, kept by an older version after a reload), the picture made here
+  // is removed and the server is asked to fetch the title's own artwork again.
   async function putBack(id) {
     const rec = records()[id];
     if (!rec) return;
+    let blob = null;
     if (rec.original === 'saved') {
       const r = await fetch(originalPath(id), { cache: 'no-store' });
       if (!r.ok) throw new Error(`its own picture is missing from /data (${r.status})`);
-      const blob = await r.blob();
-      await upload(id, new Blob([blob], { type: rec.type || blob.type || 'image/jpeg' }));
-      await fetch(originalPath(id), { method: 'DELETE' }).catch(() => {});
-    } else if (rec.original === 'none') {
-      await srvFetch(`Items/${id}/Images/Primary`, { method: 'DELETE' });
-    } else throw new Error('its own picture wasn’t kept');
+      blob = await r.blob();
+      const type = await sniffType(blob) || rec.type || 'image/jpeg';
+      if (/gif|webp/.test(type)) blob = null; else blob = new Blob([blob], { type });
+    }
+    if (blob) await upload(id, blob);
+    else {
+      await srvFetch(`Items/${id}/Images/Primary`, { method: 'DELETE' }).catch(e => { if (e.status !== 404 && e.status !== 500) throw e; });
+      if (rec.what === 'poster') await srvFetch(`Items/${id}/Refresh?MetadataRefreshMode=Default&ImageRefreshMode=Default&ReplaceAllMetadata=false&ReplaceAllImages=false`, { method: 'POST' }).catch(() => {});
+    }
+    await fetch(originalPath(id), { method: 'DELETE' }).catch(() => {});
     delete records()[id];
     await saveState();
   }
 
+  // A picture kept in /data with nothing noted for it (an older version lost the note when the page
+  // was reloaded mid-send) still belongs to something sent from here, so note it so Put back finds it.
+  async function adoptOrphans() {
+    if (!vault.ok || isPlex()) return;
+    const r = await fetch(`${DATA}originals/${srv}/`, { headers: { Accept: 'application/json' }, cache: 'no-store' }).catch(() => null);
+    if (!r?.ok) return;
+    const ids = (await r.json()).filter(f => f.type === 'file').map(f => decodeURIComponent(f.name)).filter(id => !records()[id]);
+    if (!ids.length) return;
+    const names = {};
+    for (let i = 0; i < ids.length; i += 50) {
+      const res = await srvJson(`Items?Ids=${ids.slice(i, i + 50).join(',')}`).catch(() => null);
+      for (const it of res?.Items || []) names[it.Id] = it.Name;
+    }
+    const libs = new Set(conn.libs.map(l => l.ItemId));
+    for (const id of ids) {
+      const lib = conn.libs.find(l => l.ItemId === id);
+      records()[id] = { name: lib?.Name || names[id] || id, what: libs.has(id) ? 'cover' : 'poster', original: 'saved', type: '' };
+    }
+    await saveState().catch(() => {});
+  }
+
   function updateRestoreButtons() {
-    const has = id => vault.ok && !isPlex() && id && records()[id] && records()[id].original !== 'unknown';
+    const has = id => vault.ok && !isPlex() && id && records()[id];
     $('jfLibRestore').hidden = !has(chosenLib()?.ItemId);
     $('jfItemRestore').hidden = !has(conn.item?.Id);
   }
@@ -1375,7 +1423,7 @@ code { font-size: 12.5px; overflow-wrap: anywhere; }
   function stopClip(url) {
     const q = new URL(url, location.href).searchParams;
     const base = url.slice(0, url.indexOf('Videos/'));
-    fetch(`${base}Videos/ActiveEncodings?DeviceId=${q.get('DeviceId')}&PlaySessionId=${q.get('PlaySessionId')}&api_key=${q.get('api_key')}`, { method: 'DELETE' }).catch(() => {});
+    fetch(`${base}Videos/ActiveEncodings?DeviceId=${q.get('DeviceId')}&PlaySessionId=${q.get('PlaySessionId')}`, { method: 'DELETE', headers: authHeaders() }).catch(() => {});
   }
 
   // Sources for one video: n moments, sharing one <video> when the browser can play the file.
@@ -1471,7 +1519,7 @@ code { font-size: 12.5px; overflow-wrap: anywhere; }
     $('batchIntro').textContent = (poster
       ? 'Makes a poster for each film and series in the ticked libraries from moments of its own video, with its title, and sends it.'
       : 'Makes a cover for each ticked library from moments of a few random things in it, with the library’s name, and sends it.')
-      + ' It uses the look and file settings on this page. Keep this page open while it works.'
+      + ' It uses the look and file settings on this page. It runs in this browser: if the page is reloaded or closed, it carries on from where it got to the next time you open it.'
       + (vault.ok ? ' Each one’s own picture is kept in /data, so you can put it back.' : ' Map a folder to /data in the container to keep each one’s own picture so you can put it back; until then this can’t run.');
     const ul = $('batchLibs'), ex = excluded();
     ul.innerHTML = '';
@@ -1543,47 +1591,83 @@ code { font-size: 12.5px; overflow-wrap: anywhere; }
     return [...seen.values()];
   }
 
-  async function runBatch(again) {
+  // The look and file settings a run uses, kept with it so it can carry on with the same ones after a reload.
+  const LOOK = ['font', 'size', 'zoom', 'dim', 'border', 'shadow', 'len', 'fade', 'format', 'outSize', 'fps', 'colours', 'clips'];
+  const lookNow = () => Object.fromEntries(LOOK.map(id => [id, $(id).type === 'checkbox' ? $(id).checked : $(id).value]));
+  function lookSet(look) {
+    for (const id of LOOK) {
+      if (!(id in look)) continue;
+      const el = $(id);
+      if (el.type === 'checkbox') el.checked = look[id]; else el.value = look[id];
+      el.dispatchEvent(new Event(el.tagName === 'SELECT' || el.type === 'checkbox' ? 'change' : 'input', { bubbles: true }));
+    }
+  }
+  const timeLeft = ms => {
+    const m = Math.round(ms / 60000);
+    return m < 1 ? 'Less than a minute left.' : m < 90 ? `About ${m} minute${m === 1 ? '' : 's'} left.`
+      : `About ${Math.floor(m / 60)} h ${String(m % 60).padStart(2, '0')} min left.`;
+  };
+
+  // A run is noted in /data/state.json as it goes, so if the page is reloaded or closed it carries on
+  // from where it got to the next time the page is opened and connects to the same server.
+  async function runBatch(again, job = null) {
     if (batch.running || !vault.ok) return;
-    if (again && !confirm(`Make every ${mode} again? This replaces the ones made from here and any you changed yourself since. Their own pictures stay kept, so Put back still works.`)) return;
-    const what = mode, fails = $('batchFails');
+    if (!job && again && !confirm(`Make every ${mode} again? This replaces the ones made from here and any you changed yourself since. Their own pictures stay kept, so Put back still works.`)) return;
+    job ||= { srv, what: mode, again, look: lookNow(), done: [], made: 0, skipped: 0, fails: [], spent: 0, timed: 0 };
+    vault.state.job = job;
+    const what = job.what, fails = $('batchFails'), done = new Set(job.done);
     batch.running = true; batch.stop = false;
     $('batchStop').hidden = false; $('batchNew').disabled = $('batchAll').disabled = $('batchRestore').disabled = true;
     document.querySelector('.rail').inert = true; $('make').disabled = true;
     fails.innerHTML = '';
+    for (const f of job.fails) { const li = document.createElement('li'); li.textContent = f; fails.appendChild(li); }
     const keepTitle = $('title').value, keepSources = state.sources, keepActive = state.active, [kox, koy] = [state.ox, state.oy];
-    let made = 0, skipped = 0, failed = 0;
+    let finished = false;
     try {
-      batchMsg('Finding what to make…');
+      await saveState();
+      batchMsg(job.done.length ? 'Carrying on where it got to…' : 'Finding what to make…');
       const targets = await batchTargets();
-      for (const [i, t] of targets.entries()) {
+      const todo = targets.filter(t => !done.has(t.Id) && (again || !records()[t.Id]));
+      let n = 0;
+      for (const t of targets) {
         if (batch.stop) break;
-        const rec = records()[t.Id];
-        if (rec && !again) { skipped++; continue; } // made from here, or changed by hand since: left alone
-        batchMsg(`${i + 1} of ${targets.length}: ${t.Name}…`);
+        if (done.has(t.Id)) continue;
+        if (records()[t.Id] && !again) { job.skipped++; continue; } // made from here, or changed by hand since: left alone
+        n++;
+        const eta = job.timed ? ' ' + timeLeft(job.spent / job.timed * (todo.length - n + 1)) : '';
+        const head = `${n} of ${todo.length}: ${t.Name}`;
+        batchMsg(`${head}…${eta}`);
         let sources = [];
+        const began = Date.now();
         try {
           sources = await serverSources(t);
           state.sources = sources; state.ox = state.oy = 0;
           $('title').value = t.Name.toUpperCase();
-          const res = await render(sources, (m, n) => batchMsg(`${i + 1} of ${targets.length}: ${t.Name}, frame ${m} of ${n}…`));
+          const res = await render(sources, (m, k) => batchMsg(`${head}, frame ${m} of ${k}…${eta}`));
           await keepOriginal(t.Id, t.Name, what);
           await upload(t.Id, res.blob);
           await remember(t.Id, t.Name, what, res.blob.size);
-          made++;
+          job.made++;
+          job.spent += Date.now() - began; job.timed++;
         } catch (e) {
-          failed++;
-          const li = document.createElement('li'); li.textContent = `${t.Name}: ${e.status ? e.message : renderError(e).replace('Something went wrong making it: ', '')}`;
-          fails.appendChild(li);
+          const text = `${t.Name}: ${e.status ? e.message : renderError(e).replace('Something went wrong making it: ', '')}`;
+          job.fails.push(text);
+          const li = document.createElement('li'); li.textContent = text; fails.appendChild(li);
         } finally { releaseAll(sources); }
+        job.done.push(t.Id); done.add(t.Id);
+        await saveState().catch(() => {});
       }
-      const parts = [`${made} made and sent`];
-      if (skipped) parts.push(`${skipped} already made from here or changed by hand, left alone`);
+      finished = true;
+      const failed = job.fails.length;
+      const parts = [`${job.made} made and sent`];
+      if (job.skipped) parts.push(`${job.skipped} already made from here or changed by hand, left alone`);
       if (failed) parts.push(`${failed} couldn’t be made (listed below)`);
       batchMsg((batch.stop ? 'Stopped. ' : 'Finished. ') + parts.join(', ') + '. Refresh your server to see them.', failed ? 'bad' : 'ok');
     } catch (e) {
       batchMsg(`Stopped: ${e.message}`, 'bad');
+      finished = true;
     } finally {
+      if (finished && vault.state.job === job) { delete vault.state.job; await saveState().catch(() => {}); }
       batch.running = false;
       state.sources = keepSources; state.active = keepActive; state.ox = kox; state.oy = koy;
       $('title').value = keepTitle;
@@ -1592,6 +1676,19 @@ code { font-size: 12.5px; overflow-wrap: anywhere; }
       batchSetup(); updateRestoreButtons(); redraw();
     }
   }
+
+  // Carry on with a run that was cut short by a reload, once the page is connected to its server again.
+  function resumeBatch() {
+    const job = vault.state.job;
+    if (!job || job.srv !== srv || batch.running || !conn.ready || isPlex()) return;
+    const radio = document.querySelector(`input[name=mode][value=${job.what}]`);
+    radio.checked = true; setMode(job.what);
+    lookSet(job.look || {});
+    $('batch').open = true;
+    runBatch(job.again, job);
+  }
+  window.addEventListener('beforeunload', e => { if (batch.running) { e.preventDefault(); e.returnValue = ''; } });
+
   $('batchNew').addEventListener('click', () => runBatch(false));
   $('batchAll').addEventListener('click', () => runBatch(true));
   $('batchStop').addEventListener('click', () => { batch.stop = true; batchMsg('Stopping after this one…'); });
