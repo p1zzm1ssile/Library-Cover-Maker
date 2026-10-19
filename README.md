@@ -117,6 +117,9 @@ If a title had no picture of its own, or the copy kept for it is animated (an ea
 
 ### Posters for every film and series, or a cover for every library
 
+> [!CAUTION]
+> **Animated posters for your whole library are not recommended on Fire TV sticks, smart TVs and other low-end devices.** They have a small processor and little memory, and a screen full of animated posters can make them slow, stutter or crash. Animated library covers are fine, as there are only a few of them. For posters on every film and series, choose Still PNG, or try a few animated ones by hand on your slowest device first. The page shows this warning too.
+
 With `/data` mapped and a Jellyfin or Emby server connected, open **Posters for every film and series** under the send section (or **Covers for every library** in Cover mode).
 
 1. Untick any libraries you want left out. The page remembers that for next time.

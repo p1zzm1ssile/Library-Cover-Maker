@@ -117,6 +117,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, .drop:focus-vis
 .jf .msg.bad { border-color: #d04545; }
 .jf img { max-width: 260px; border-radius: 6px; border: 1px solid var(--line); }
 code { font-size: 12.5px; overflow-wrap: anywhere; }
+.warn { margin: 0; padding: 10px 12px; border: 2px solid #c62828; border-radius: 8px; background: #fdecea; color: #8e1b1b; font-size: 13px; line-height: 1.45; }
+@media (prefers-color-scheme: dark) { .warn { background: #3a1214; color: #ffb4ab; border-color: #e5484d; } }
 .adv, .batch { border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; }
 .adv > summary, .batch > summary { cursor: pointer; font-weight: 700; font-size: 14px; }
 .adv[open], .batch[open] { display: grid; gap: 10px; }
@@ -229,6 +231,7 @@ code { font-size: 12.5px; overflow-wrap: anywhere; }
           <details class="batch" id="batch" hidden>
             <summary id="batchTitle">Posters for every film and series</summary>
             <p class="hint" id="batchIntro"></p>
+            <p class="warn" id="batchWarn" role="note"><strong>Animated posters for your whole library are not recommended on Fire TV sticks, smart TVs and other low-end devices.</strong> They have a small processor and little memory, and a screen full of animated posters can make them slow, stutter or crash. Animated library covers are fine, as there are only a few of them. For posters on every film and series, choose Still PNG, or try a few animated ones by hand on your slowest device first.</p>
             <span class="lbl">Libraries</span>
             <ul class="libticks" id="batchLibs"></ul>
             <p class="hint" id="batchEstimate"></p>
@@ -486,6 +489,7 @@ code { font-size: 12.5px; overflow-wrap: anywhere; }
     $('out').hidden = true;
     $('jfImg').hidden = true; jfMsg('');
     jfShowMode();
+    showBatchWarn();
     redraw();
   }
   const makeLabel = () => `Make ${$('format').value === 'png' ? 'still' : 'animated'} ${mode === 'poster' ? 'poster' : 'cover'}`;
@@ -818,6 +822,10 @@ code { font-size: 12.5px; overflow-wrap: anywhere; }
     $('clipsOut').textContent = $('clips').value;
   }
   $('format').addEventListener('change', fillSizes);
+  // The low-end device warning is about a whole library of animated posters; covers and still PNGs are fine.
+  const showBatchWarn = () => { $('batchWarn').hidden = mode !== 'poster' || $('format').value === 'png'; };
+  $('format').addEventListener('change', showBatchWarn);
+  showBatchWarn();
   ['fps', 'colours', 'clips'].forEach(id => $(id).addEventListener('input', () => { showAdv(); batchEstimate(); }));
   $('outSize').addEventListener('change', batchEstimate);
   fillSizes();
@@ -1516,6 +1524,7 @@ code { font-size: 12.5px; overflow-wrap: anywhere; }
   function batchSetup() {
     const poster = mode === 'poster';
     $('batchTitle').textContent = poster ? 'Posters for every film and series' : 'Covers for every library';
+    showBatchWarn();
     $('batchIntro').textContent = (poster
       ? 'Makes a poster for each film and series in the ticked libraries from moments of its own video, with its title, and sends it.'
       : 'Makes a cover for each ticked library from moments of a few random things in it, with the library’s name, and sends it.')
