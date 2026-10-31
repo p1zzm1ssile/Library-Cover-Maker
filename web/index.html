@@ -12,7 +12,7 @@ img { max-width: 100%; }
 <link rel="icon" href="icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:wght@500;700&family=Playfair+Display:wght@600;800&family=Cinzel:wght@600;800&family=Bebas+Neue&family=Oswald:wght@500;700&family=Manrope:wght@400;600;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:wght@500;700&family=Playfair+Display:wght@600;800&family=Cinzel:wght@600;700&family=Cormorant+Garamond:wght@700&family=Abril+Fatface&family=Bebas+Neue&family=Anton&family=Oswald:wght@500;700&family=Montserrat:wght@800&family=Lobster&family=Manrope:wght@400;600;700&display=swap">
 <style>
 /* Layout: one working bench — large live preview on the left, a narrow control rail on the right; stacks on phones. */
 :root {
@@ -130,7 +130,7 @@ code { font-size: 12.5px; overflow-wrap: anywhere; }
 <div class="wrap">
   <header>
     <h1>Library Cover Maker</h1>
-    <p>Add up to 5 videos or pictures, or pick a folder and let it choose 5 at random. Type your library name and get an <strong>animated WebP</strong> or <strong>GIF</strong> cover that cuts between moments from each one, or a <strong>still PNG</strong>. Switch to <strong>Poster</strong> for a portrait film or series poster. Choose the moment for each video, or leave it random. Pictures get a slow zoom. Connected to Jellyfin or Emby, it can cut the moments from a title’s own video and make one for every film, series and library in one go.</p>
+    <p>Add up to 6 videos or pictures, or pick a folder and let it choose 6 at random. Type your library name and get an <strong>animated WebP</strong> or <strong>GIF</strong> cover that cuts between moments from each one, or a <strong>still PNG</strong>. Switch to <strong>Poster</strong> for a portrait film or series poster. Choose the moment for each video, or leave it random. Pictures get a slow zoom. Connected to Jellyfin or Emby, it can cut the moments from a title’s own video and make one for every film, series and library in one go.</p>
   </header>
 
   <div class="bench">
@@ -140,9 +140,12 @@ code { font-size: 12.5px; overflow-wrap: anywhere; }
 
 
       <div class="result">
-        <div class="group">
-          <label for="len">Animation length</label>
-          <div class="row"><input id="len" type="range" min="2" max="12" step="1" value="6"><output id="lenOut">6 s</output></div>
+        <div class="group" id="momentWrap">
+          <label for="moment">How long each moment plays</label>
+          <select id="moment">
+            <option value="0.5">0.5 seconds</option><option value="0.8">0.8 seconds</option><option value="1">1 second</option>
+            <option value="1.5">1.5 seconds</option><option value="2" selected>2 seconds</option><option value="3">3 seconds</option>
+          </select>
         </div>
         <div class="group">
           <label for="format">File type</label>
@@ -152,7 +155,15 @@ code { font-size: 12.5px; overflow-wrap: anywhere; }
             <option value="png">Still PNG (for Plex, or anywhere)</option>
           </select>
         </div>
-        <label class="check" id="fadeWrap"><input id="fade" type="checkbox" checked> Fade between clips</label>
+        <div class="group" id="fadeWrap">
+          <label class="check"><input id="fadeBetween" type="checkbox" checked> Fade between moments</label>
+          <label class="check"><input id="fadeEnd" type="checkbox"> Fade out at the end, and in at the start</label>
+          <label for="fadeLen">How long each fade takes</label>
+          <select id="fadeLen">
+            <option value="0.2">0.2 seconds</option><option value="0.3" selected>0.3 seconds</option><option value="0.5">0.5 seconds</option>
+            <option value="0.8">0.8 seconds</option><option value="1">1 second</option>
+          </select>
+        </div>
         <details class="adv" id="advWrap">
           <summary>File size settings</summary>
           <div class="group">
@@ -169,7 +180,7 @@ code { font-size: 12.5px; overflow-wrap: anywhere; }
           </div>
           <div class="group">
             <label for="clips">Moments from a server video</label>
-            <div class="row"><input id="clips" type="range" min="1" max="5" step="1" value="3"><output id="clipsOut"></output></div>
+            <div class="row"><input id="clips" type="range" min="1" max="6" step="1" value="3"><output id="clipsOut"></output></div>
           </div>
           <p class="hint">Smaller sizes, fewer frames and fewer colours make smaller files. The moments setting is how many moments are cut from a film, episodes from a series, or titles from a library when the pictures come from your server.</p>
         </details>
@@ -258,7 +269,7 @@ code { font-size: 12.5px; overflow-wrap: anywhere; }
       </div>
 
       <div class="group">
-        <span class="lbl">Videos or pictures (up to 5)</span>
+        <span class="lbl">Videos or pictures (up to 6)</span>
         <div class="drop" id="drop" tabindex="0" role="button">Drop files here or <strong>browse</strong><br><span style="font-size:12px">MP4, MKV, WEBM, JPG, PNG, WEBP</span></div>
         <input type="file" id="file" accept="image/*,video/*" multiple hidden>
         <input type="file" id="folder" webkitdirectory multiple hidden>
@@ -272,7 +283,7 @@ code { font-size: 12.5px; overflow-wrap: anywhere; }
           <div class="path" id="browserPath">/</div>
           <div class="btns">
             <button type="button" class="ghost" id="browserUp">Up</button>
-            <button type="button" class="ghost" id="browserUse">Use this folder (random 5)</button>
+            <button type="button" class="ghost" id="browserUse">Use this folder (random 6)</button>
             <button type="button" class="ghost" id="browserClose">Close</button>
           </div>
           <ul id="browserList"></ul>
@@ -297,17 +308,28 @@ code { font-size: 12.5px; overflow-wrap: anywhere; }
       <div class="group">
         <label for="font">Font</label>
         <select id="font">
-          <option value="700|Bodoni Moda">Bodoni (like your examples)</option>
+          <option value="700|Bodoni Moda">Bodoni Moda</option>
           <option value="800|Playfair Display">Playfair Display</option>
-          <option value="800|Cinzel">Cinzel</option>
+          <option value="700|Cinzel">Cinzel</option>
+          <option value="700|Cormorant Garamond">Cormorant Garamond</option>
+          <option value="400|Abril Fatface">Abril Fatface</option>
           <option value="400|Bebas Neue">Bebas Neue</option>
+          <option value="400|Anton">Anton</option>
           <option value="700|Oswald">Oswald</option>
+          <option value="800|Montserrat">Montserrat</option>
+          <option value="400|Lobster">Lobster</option>
         </select>
       </div>
 
       <div class="group">
         <label for="size">Text size</label>
-        <div class="row"><input id="size" type="range" min="40" max="200" value="120"><output id="sizeOut"></output></div>
+        <div class="row"><input id="size" type="range" min="50" max="200" step="10" value="100"><output id="sizeOut"></output></div>
+      </div>
+      <div class="group">
+        <label for="position">Text position</label>
+        <select id="position">
+          <option value="top">Top</option><option value="middle" selected>Middle</option><option value="bottom">Bottom</option>
+        </select>
       </div>
       <div class="group">
         <label for="zoom">Zoom</label>
@@ -320,7 +342,8 @@ code { font-size: 12.5px; overflow-wrap: anywhere; }
 
       <div class="group">
         <label class="check"><input id="border" type="checkbox" checked> Rounded white frame</label>
-        <label class="check"><input id="shadow" type="checkbox" checked> Text shadow</label>
+        <label class="check"><input id="shadow" type="checkbox" checked> A shadow under the text</label>
+        <label class="check"><input id="band" type="checkbox" checked> Darken the picture behind the text</label>
       </div>
     </aside>
   </div>
@@ -332,7 +355,7 @@ code { font-size: 12.5px; overflow-wrap: anywhere; }
   // Library covers are 16:9; posters are 2:3 portrait. W and H change with the mode.
   const SIZES = { cover: [960, 540], poster: [720, 1080] };
   let mode = 'cover', [W, H] = SIZES.cover;
-  const MAX_FILES = 5;
+  const MAX_FILES = 6;
   const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
   const $ = id => document.getElementById(id);
   // sources: { el, isVideo, name, url }
@@ -365,7 +388,9 @@ code { font-size: 12.5px; overflow-wrap: anywhere; }
     ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
   }
 
-  function draw(src, zoomMul) {
+  // black: how far the picture has faded to black (0 to 1). The text stays put while the picture fades,
+  // as in the Animated Film Posters plugin.
+  function draw(src, zoomMul, black = 0) {
     if (!src || !src.el) src = activeSource();
     if (typeof zoomMul !== 'number') zoomMul = 1;
     const [sw, sh] = srcSize(src);
@@ -382,41 +407,19 @@ code { font-size: 12.5px; overflow-wrap: anywhere; }
     }
     const dim = $('dim').value / 100;
     if (dim) { ctx.fillStyle = `rgba(0,0,0,${dim})`; ctx.fillRect(0, 0, W, H); }
+    if (black > 0) { ctx.fillStyle = `rgba(0,0,0,${Math.min(1, black)})`; ctx.fillRect(0, 0, W, H); }
 
-    if (mode === 'poster') drawPosterText();
-    else drawCoverText();
+    drawLook();
 
-    $('sizeOut').textContent = $('size').value;
+    $('sizeOut').textContent = $('size').value + '%';
     $('zoomOut').textContent = $('zoom').value + '%';
     $('dimOut').textContent = $('dim').value + '%';
-    $('lenOut').textContent = $('len').value + ' s';
   }
   const redraw = () => draw();
 
-  // Library cover: frame, then the name on one line in the middle.
-  function drawCoverText() {
-    if ($('border').checked) {
-      ctx.save();
-      ctx.shadowColor = 'rgba(0,0,0,.35)'; ctx.shadowBlur = 6;
-      ctx.strokeStyle = '#fff'; ctx.lineWidth = 4;
-      roundRect(24, 22, W - 48, H - 44, 22); ctx.stroke();
-      ctx.restore();
-    }
-
-    const [weight, family] = $('font').value.split('|');
-    const text = ($('title').value || '').toUpperCase();
-    let size = +$('size').value;
-    ctx.font = `${weight} ${size}px "${family}", Georgia, serif`;
-    const maxW = W - 120;
-    const tw = ctx.measureText(text).width;
-    if (tw > maxW) { size = Math.floor(size * maxW / tw); ctx.font = `${weight} ${size}px "${family}", Georgia, serif`; }
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.save();
-    if ($('shadow').checked) { ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 14; ctx.shadowOffsetY = 3; }
-    ctx.fillStyle = '#fff';
-    ctx.fillText(text, W / 2, H / 2 + size * 0.04);
-    ctx.restore();
-  }
+  // Title size before the Text size setting: big for a short title, smaller for a long one, sized by the
+  // shorter side. The same steps as the Animated Film Posters plugin, so 100% matches its 100%.
+  const titleSize = (side, n) => Math.round(side * (n <= 8 ? 0.17 : n <= 16 ? 0.15 : n <= 30 ? 0.125 : n <= 50 ? 0.1 : 0.085));
 
   // Split the title into lines that fit maxW, shrinking the text until it fits in 3 lines.
   function wrapTitle(text, size, maxW, font) {
@@ -436,41 +439,58 @@ code { font-size: 12.5px; overflow-wrap: anywhere; }
     return { lines: [words.join(' ')], size };
   }
 
-  // Poster: the same frame scaled to the portrait size, a soft shade at the bottom,
-  // and the title wrapped onto up to 3 lines in the lower part of the poster.
-  function drawPosterText() {
-    const k = W / 540; // keeps the frame and text in proportion with the cover's
-    const g = ctx.createLinearGradient(0, H * 0.5, 0, H);
-    g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,.55)');
-    ctx.fillStyle = g; ctx.fillRect(0, H * 0.5, W, H * 0.5);
+  // The look, laid out like the plugin's: a soft dark band behind the text, the rounded white frame,
+  // then the title in capitals at the top, middle or bottom. Covers and posters share it.
+  function drawLook() {
+    const side = Math.min(W, H), pos = $('position').value;
+    const text = ($('title').value || '').toUpperCase().replace(/\s+/g, ' ').trim();
+
+    if (text && $('band').checked) {
+      const soft = Math.max(4, side / 14) * 2;
+      const [top, bottom] = pos === 'top' ? [-soft, H * 0.38] : pos === 'middle' ? [H * 0.3, H * 0.7] : [H * 0.62, H + soft];
+      const g = ctx.createLinearGradient(0, top - soft, 0, bottom + soft);
+      const span = bottom - top + 2 * soft, a = soft / span, b = 1 - a;
+      g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(a, 'rgba(0,0,0,.62)');
+      g.addColorStop(b, 'rgba(0,0,0,.62)'); g.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = g; ctx.fillRect(0, top - soft, W, span);
+    }
 
     if ($('border').checked) {
+      const pad = side * 0.035, radius = side * 0.045, line = Math.max(2, side / 80);
       ctx.save();
-      ctx.shadowColor = 'rgba(0,0,0,.35)'; ctx.shadowBlur = 6 * k;
-      ctx.strokeStyle = '#fff'; ctx.lineWidth = 4 * k;
-      roundRect(24 * k, 24 * k, W - 48 * k, H - 48 * k, 22 * k); ctx.stroke();
+      ctx.shadowColor = 'rgba(0,0,0,.35)'; ctx.shadowBlur = side / 90;
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = line;
+      roundRect(pad + line / 2, pad + line / 2, W - 2 * pad - line, H - 2 * pad - line, radius - line / 2); ctx.stroke();
       ctx.restore();
     }
 
-    const [weight, family] = $('font').value.split('|');
-    const text = ($('title').value || '').toUpperCase().trim();
     if (!text) return;
+    const [weight, family] = $('font').value.split('|');
     const font = sz => `${weight} ${sz}px "${family}", Georgia, serif`;
-    const { lines, size } = wrapTitle(text, Math.round(+$('size').value * k * 0.75), W - 110 * k, font);
-    const lh = size * 1.02, mid = H * 0.8;
+    const margin = side * 0.09, marginV = H * 0.1;
+    const want = Math.max(6, Math.round(titleSize(side, text.length) * $('size').value / 100));
+    const { lines, size } = wrapTitle(text, want, W - 2 * margin, font);
+    const lh = size * 1.05, block = lh * lines.length;
+    const y0 = pos === 'top' ? marginV : pos === 'middle' ? (H - block) / 2 : H - marginV - block;
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.save();
-    if ($('shadow').checked) { ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 14 * k; ctx.shadowOffsetY = 3 * k; }
+    if ($('shadow').checked) {
+      const off = Math.max(1, side / 160);
+      ctx.shadowColor = 'rgba(0,0,0,.55)'; ctx.shadowBlur = off; ctx.shadowOffsetX = off; ctx.shadowOffsetY = off;
+    }
     ctx.fillStyle = '#fff';
-    lines.forEach((line, i) => ctx.fillText(line, W / 2, mid + (i - (lines.length - 1) / 2) * lh + size * 0.04));
+    lines.forEach((line, i) => ctx.fillText(line, W / 2, y0 + (i + 0.5) * lh + size * 0.04));
     ctx.restore();
   }
 
   // ---- Cover or poster ----
   const titles = { cover: $('title').value, poster: '' };
+  // Each kind keeps its own text position: covers start in the middle, posters at the bottom.
+  const positions = { cover: $('position').value, poster: 'bottom' };
   function setMode(m) {
     if (m === mode) return;
     titles[mode] = $('title').value;
+    positions[mode] = $('position').value;
     mode = m;
     [W, H] = SIZES[m];
     cv.width = W; cv.height = H;
@@ -481,6 +501,7 @@ code { font-size: 12.5px; overflow-wrap: anywhere; }
     state.ox = state.oy = 0;
     const poster = m === 'poster';
     $('title').value = titles[m];
+    $('position').value = positions[m];
     $('title').placeholder = poster ? 'Film or series title' : '';
     $('titleLbl').textContent = poster ? 'Film or series title' : 'Library name';
     $('presets').hidden = poster;
@@ -496,13 +517,13 @@ code { font-size: 12.5px; overflow-wrap: anywhere; }
   document.querySelectorAll('input[name=mode]').forEach(r => r.addEventListener('change', () => r.checked && setMode(r.value)));
 
   // Fonts load async; redraw once each is ready.
-  const fams = ['700 20px "Bodoni Moda"', '800 20px "Playfair Display"', '800 20px "Cinzel"', '400 20px "Bebas Neue"', '700 20px "Oswald"'];
+  const fams = [...$('font').options].map(o => { const [w, f] = o.value.split('|'); return `${w} 20px "${f}"`; });
   Promise.all(fams.map(f => document.fonts.load(f).catch(() => {}))).then(redraw);
   redraw();
 
   // Controls
-  ['title', 'size', 'zoom', 'dim', 'len'].forEach(id => $(id).addEventListener('input', redraw));
-  ['font', 'border', 'shadow'].forEach(id => $(id).addEventListener('change', redraw));
+  ['title', 'size', 'zoom', 'dim'].forEach(id => $(id).addEventListener('input', redraw));
+  ['font', 'position', 'border', 'shadow', 'band'].forEach(id => $(id).addEventListener('change', redraw));
   $('presets').addEventListener('click', e => { if (e.target.tagName === 'BUTTON') { $('title').value = e.target.textContent; redraw(); } });
 
   // ---- Source files ----
@@ -794,17 +815,16 @@ code { font-size: 12.5px; overflow-wrap: anywhere; }
   // its apps untouched, so they stay animated, while WebPs are turned into still pictures.
   // PNG: the preview as it is now, at full size, for servers that only show stills (Plex, Emby).
   const SIZE_CHOICES = {
-    cover:  { webp: ['480x270', '640x360', '800x450'], gif: ['320x180', '480x270', '640x360'] },
-    poster: { webp: ['300x450', '400x600', '500x750'], gif: ['160x240', '240x360', '320x480'] },
+    cover:  { webp: ['480x270', '640x360', '800x450'], gif: ['320x180', '400x224', '480x270', '640x360'] },
+    poster: { webp: ['300x450', '400x600', '500x750'], gif: ['160x240', '200x300', '240x360', '300x450'] },
   };
-  const DEFAULTS = { cover: { webp: ['640x360', 12], gif: ['480x270', 10] }, poster: { webp: ['400x600', 12], gif: ['320x480', 10] } };
-  const FADE = 4;
+  const DEFAULTS = { cover: { webp: ['640x360', 12], gif: ['480x270', 10] }, poster: { webp: ['400x600', 12], gif: ['240x360', 10] } };
   const fmtSize = n => n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${Math.round(n / 1024)} KB`;
   let lastResult = null; // { blob, mode, format } of the newest animation, for Send to your server
 
   function fillSizes() {
     const format = $('format').value, still = format === 'png';
-    $('advWrap').hidden = still; $('fadeWrap').hidden = still;
+    $('advWrap').hidden = still; $('fadeWrap').hidden = still; $('momentWrap').hidden = still;
     $('make').textContent = makeLabel();
     if (still) return;
     const sel = $('outSize'), [size, fps] = DEFAULTS[mode][format];
@@ -904,42 +924,40 @@ code { font-size: 12.5px; overflow-wrap: anywhere; }
       return { blob, format, w: W, h: H, len: 0, k: 1 };
     }
     const [OW, OH] = $('outSize').value.split('x').map(Number), FPS = +$('fps').value;
-    const len = +$('len').value, total = Math.round(len * FPS), ms = Math.round(1000 / FPS);
-    const k = list.length;
-    const fade = $('fade').checked && k > 1;
-    // Split the frames evenly between the files; the last one takes any remainder.
-    const counts = list.map((_, i) => i < k - 1 ? Math.floor(total / k) : total - Math.floor(total / k) * (k - 1));
+    const k = list.length, each = +$('moment').value, n = Math.max(1, Math.round(each * FPS));
+    const len = Math.round(k * n / FPS * 10) / 10, total = k * n, ms = Math.round(1000 / FPS);
+    // Fades go through black, as in the plugin: between moments, and out at the end and in at the start
+    // so the loop starts again from black. A fade never takes more than half a moment.
+    const between = $('fadeBetween').checked, atEnd = $('fadeEnd').checked;
+    const fadeSec = Math.min(+$('fadeLen').value, n / FPS / 2);
 
     const oc = document.createElement('canvas'); oc.width = OW; oc.height = OH;
     const octx = oc.getContext('2d', { willReadFrequently: format === 'gif' });
-    const prev = document.createElement('canvas'); prev.width = OW; prev.height = OH;
-    const pctx = prev.getContext('2d');
     let made = 0;
 
     const enc = format === 'gif' ? gifEncoder(OW, OH, ms, +$('colours').value) : webpEncoder(OW, OH, ms);
     for (let s = 0; s < k; s++) {
-      const src = list[s], n = counts[s];
+      const src = list[s];
+      const fadeIn = (between && s > 0) || (atEnd && s === 0), fadeOut = (between && s < k - 1) || (atEnd && s === k - 1);
       const dur = src.isVideo && Number.isFinite(src.el.duration) ? src.el.duration : Infinity;
       const start = !src.isVideo ? 0 : src.start == null ? randomTime(src.el, n / FPS) : Math.max(0, Math.min(src.start, dur - n / FPS));
       for (let i = 0; i < n; i++) {
-        if (src.isVideo) { await seekTo(src.el, start + i / FPS); draw(src, 1); }
-        else if (k === 1) draw(src, 1 + 0.12 * (1 - Math.cos(2 * Math.PI * i / n)) / 2); // zoom in and back out, loops cleanly
-        else draw(src, 1 + 0.12 * i / n); // slow push-in
+        const t = i / FPS;
+        let lit = 1;
+        if (fadeIn && fadeSec > 0) lit = Math.min(lit, t / fadeSec);
+        if (fadeOut && fadeSec > 0) lit = Math.min(lit, (n / FPS - t) / fadeSec);
+        const black = 1 - Math.max(0, Math.min(1, lit));
+        if (src.isVideo) { await seekTo(src.el, start + t); draw(src, 1, black); }
+        else if (k === 1) draw(src, 1 + 0.12 * (1 - Math.cos(2 * Math.PI * i / n)) / 2, black); // zoom in and back out, loops cleanly
+        else draw(src, 1 + 0.12 * i / n, black); // slow push-in
 
-        octx.globalAlpha = 1;
         octx.drawImage(cv, 0, 0, OW, OH);
-        if (fade && s > 0 && i < FADE) {
-          octx.globalAlpha = 1 - (i + 1) / (FADE + 1);
-          octx.drawImage(prev, 0, 0);
-          octx.globalAlpha = 1;
-        }
 
         enc.add(oc);
         made++;
         progress(made, total);
         await new Promise(r => setTimeout(r, 0));
       }
-      pctx.drawImage(oc, 0, 0); // remember this clip's last frame for the next fade
     }
     return { blob: enc.finish(), format, w: OW, h: OH, len, k };
   }
@@ -969,7 +987,7 @@ code { font-size: 12.5px; overflow-wrap: anywhere; }
       const big = blob.size > 5 * 1024 * 1024 ? ' That’s quite big: a shorter animation or a smaller size makes a smaller file.' : '';
       $('outInfo').textContent = format === 'png'
         ? `PNG, ${res.w}×${res.h}, ${fmtSize(blob.size)}. It’s the preview as it is now: move the picture or pick another moment, then Make again.`
-        : `${format.toUpperCase()}, ${res.w}×${res.h}, ${res.len} seconds, ${res.k} clip${res.k > 1 ? 's' : ''}, ${fmtSize(blob.size)}.${big} Click Make again for different random moments.`;
+        : `${format.toUpperCase()}, ${res.w}×${res.h}, ${res.len} seconds, ${res.k} moment${res.k > 1 ? 's' : ''}, ${fmtSize(blob.size)}.${big} Click Make again for different random moments.`;
       $('out').hidden = false;
       batchEstimate();
       img.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'nearest' });
@@ -1470,7 +1488,7 @@ code { font-size: 12.5px; overflow-wrap: anywhere; }
 
   // Moments for a film, series or library: n in all, one per episode or title when there are several.
   async function serverSources(target) {
-    const n = +$('clips').value, secondsEach = +$('len').value / n;
+    const n = +$('clips').value, secondsEach = +$('moment').value;
     const reason = target.Type === 'Movie' || target.Type === 'Video' || target.Type === 'MusicVideo' ? whyNot(target) : '';
     if (reason) throw new Error(reason);
     const vids = await videosFor(target, n);
@@ -1601,12 +1619,14 @@ code { font-size: 12.5px; overflow-wrap: anywhere; }
   }
 
   // The look and file settings a run uses, kept with it so it can carry on with the same ones after a reload.
-  const LOOK = ['font', 'size', 'zoom', 'dim', 'border', 'shadow', 'len', 'fade', 'format', 'outSize', 'fps', 'colours', 'clips'];
+  const LOOK = ['font', 'size', 'position', 'zoom', 'dim', 'border', 'shadow', 'band', 'moment', 'fadeBetween', 'fadeEnd', 'fadeLen', 'format', 'outSize', 'fps', 'colours', 'clips'];
   const lookNow = () => Object.fromEntries(LOOK.map(id => [id, $(id).type === 'checkbox' ? $(id).checked : $(id).value]));
   function lookSet(look) {
     for (const id of LOOK) {
       if (!(id in look)) continue;
       const el = $(id);
+      // A run saved by an older version may hold a choice this one no longer has: keep the current one.
+      if (el.tagName === 'SELECT' && ![...el.options].some(o => o.value === String(look[id]))) continue;
       if (el.type === 'checkbox') el.checked = look[id]; else el.value = look[id];
       el.dispatchEvent(new Event(el.tagName === 'SELECT' || el.type === 'checkbox' ? 'change' : 'input', { bubbles: true }));
     }
