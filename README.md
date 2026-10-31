@@ -4,7 +4,7 @@
 
 Make animated cover art for your Jellyfin and Emby libraries, and animated or still posters for your films and series on Jellyfin, Emby and Plex.
 
-Add up to 5 videos or pictures, or pick a whole folder and let it choose 5 at random. Type the library name and it builds an animated WebP or GIF, or a still PNG, that cuts between moments from each file, with a rounded white frame and the name in a big serif font. Switch to **Poster** for a portrait poster in the same style. Choose the moment for each video yourself, or leave it random. Pictures get a slow zoom.
+Add up to 6 videos or pictures, or pick a whole folder and let it choose 6 at random. Type the library name and it builds an animated WebP or GIF, or a still PNG, that cuts between moments from each file, with a rounded white frame and the name in a big serif font. Switch to **Poster** for a portrait poster in the same style. Choose the moment for each video yourself, or leave it random. Pictures get a slow zoom.
 
 Use files from the computer you're on, from your media folders on the server, or straight from your Jellyfin or Emby server: pick a film and it cuts moments from the film itself. It can also make a poster for every film and series, or a cover for every library, in one go, and put the original pictures back whenever you like.
 
@@ -61,25 +61,28 @@ The fonts load from Google Fonts, so the computer you open the page on needs int
 
 ## Make a cover
 
-1. Drop in up to 5 videos (MP4 works best) or pictures, or click **Pick a folder** to have 5 chosen at random from a folder on your computer. **Server media** browses the folders mapped to `/media`: click a file to add it, or **Use this folder** for 5 random files from that folder and its subfolders. **New random files** picks a different 5, and with **New random files each time I click Make** ticked, every cover uses a fresh set.
+1. Drop in up to 6 videos (MP4 works best) or pictures, or click **Pick a folder** to have 6 chosen at random from a folder on your computer. **Server media** browses the folders mapped to `/media`: click a file to add it, or **Use this folder** for 6 random files from that folder and its subfolders. **New random files** picks a different 6, and with **New random files each time I click Make** ticked, every cover uses a fresh set.
    **Videos only when picking from a folder** is ticked by default, so posters and other pictures in your media folders are skipped.
 2. Each video in the list has its own slider and a small preview of the frame. Drag the slider to choose the moment that video's clip starts at. Click **Random** to go back to a random moment.
-3. Pick or type the library name, choose a font, and drag the preview to position the picture.
-4. Set the animation length (2 to 12 seconds, shared between your files), choose WebP, GIF or still PNG, and untick **Fade between clips** if you'd rather it cut straight from one to the next.
+3. Pick or type the library name and drag the preview to position the picture. Then set the look:
+   - **Font**: Bodoni Moda, Playfair Display, Cinzel, Cormorant Garamond, Abril Fatface, Bebas Neue, Anton, Oswald, Montserrat or Lobster.
+   - **Text size**, from 50% to 200% of the size that fits the name, and **Text position** at the top, middle or bottom.
+   - **A shadow under the text** and **Darken the picture behind the text**, each on or off, and the rounded white frame.
+4. Set **How long each moment plays** (0.5 to 3 seconds), and choose WebP, GIF or still PNG. **Fade between moments** fades through black from one to the next, and **Fade out at the end, and in at the start** makes the loop start again from black; **How long each fade takes** is 0.2 to 1 second.
 5. Click **Make animated cover**, then **Download animated cover**.
 
-Keep the file under about 5 MB so your home screen loads quickly. Shorter animations make smaller files. The page shows the size of each file it makes.
+Keep the file under about 5 MB so your home screen loads quickly. Shorter moments make smaller files. The page shows the size of each file it makes.
 
-**File size settings** has more ways to make files smaller: the picture size, frames a second, and for GIFs the number of colours. It also sets how many moments are cut when the pictures come from your server (1 to 5).
+**File size settings** has more ways to make files smaller: the picture size, frames a second, and for GIFs the number of colours. It also sets how many moments are cut when the pictures come from your server (1 to 6).
 
 ## Make a poster
 
-Click **Poster** at the top of the right-hand panel. It works the same way, but makes a portrait 2:3 poster with the title near the bottom, split over up to 3 lines if it's long. Your library cover's name is kept for when you switch back.
+Click **Poster** at the top of the right-hand panel. It works the same way, but makes a portrait 2:3 poster with the title at the bottom (or wherever you set **Text position**), split over up to 3 lines if it's long. Your library cover's name and text position are kept for when you switch back.
 
 ## WebP, GIF or PNG?
 
 - **WebP** is smaller and looks better. It's animated in the Jellyfin web page, but the Jellyfin apps (Android TV, phones, and so on) show it as a still picture, because Jellyfin resizes every picture it sends to them.
-- **GIF** is the one picture type Jellyfin sends untouched, so a GIF **stays animated in the apps too**. Emby's web page sends GIFs untouched as well, so pick GIF for Emby. GIFs are made a bit smaller by default (480×270 for covers, 320×480 for posters, 10 frames a second) to keep the file size sensible.
+- **GIF** is the one picture type Jellyfin sends untouched, so a GIF **stays animated in the apps too**. Emby's web page sends GIFs untouched as well, so pick GIF for Emby. GIFs are made a bit smaller by default (480×270 for covers, 240×360 for posters, 10 frames a second) to keep the file size sensible.
 - **Still PNG** is a single picture in the same style, taken from the first file in the list at its chosen moment. Use it for Plex, which turns every poster into a still picture anyway, or anywhere you don't want movement.
 
 ## Send to your server
