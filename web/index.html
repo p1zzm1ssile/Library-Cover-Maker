@@ -10,9 +10,7 @@ img { max-width: 100%; }
 </style>
 <title>Library Cover Maker</title>
 <link rel="icon" href="icon.png">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:wght@500;700&family=Playfair+Display:wght@600;800&family=Cinzel:wght@600;700&family=Cormorant+Garamond:wght@700&family=Abril+Fatface&family=Bebas+Neue&family=Anton&family=Oswald:wght@500;700&family=Montserrat:wght@800&family=Lobster&family=Manrope:wght@400;600;700&display=swap">
+<link rel="stylesheet" href="fonts.css">
 <style>
 /* Layout: one working bench — large live preview on the left, a narrow control rail on the right; stacks on phones. */
 :root {
@@ -883,18 +881,19 @@ code { font-size: 12.5px; overflow-wrap: anywhere; }
     return new Blob([concat([ascii('RIFF'), new Uint8Array(le(body.length, 4)), body])], { type: 'image/webp' });
   }
 
+  const WEBP_QUALITY = 0.78;
   function webpEncoder(w, h, ms) {
     const frames = []; let alpha = false;
     return {
-      add(canvas) {
-        const url = canvas.toDataURL('image/webp', 0.78);
+      async add(canvas) {
+        const url = canvas.toDataURL('image/webp', WEBP_QUALITY);
         if (!url.startsWith('data:image/webp')) throw new Error('nowebp');
         const bin = atob(url.slice(url.indexOf(',') + 1));
         const parts = frameChunks(Uint8Array.from(bin, c => c.charCodeAt(0)));
         if (parts.some(c => c.id === 'ALPH')) alpha = true;
         frames.push(concat(parts.map(c => c.data)));
       },
-      finish: () => muxWebP(frames, w, h, ms, alpha),
+      finish: async () => muxWebP(frames, w, h, ms, alpha),
     };
   }
 
@@ -903,12 +902,66 @@ code { font-size: 12.5px; overflow-wrap: anywhere; }
     const { GIFEncoder, quantize, applyPalette } = window.gifenc;
     const gif = GIFEncoder();
     return {
-      add(canvas) {
+      async add(canvas) {
         const { data } = canvas.getContext('2d').getImageData(0, 0, w, h);
         const palette = quantize(data, colours, { format: 'rgb565' });
         gif.writeFrame(applyPalette(data, palette, 'rgb565'), w, h, { palette, delay: ms, repeat: 0 });
       },
-      finish() { gif.finish(); return new Blob([gif.bytes()], { type: 'image/gif' }); },
+      async finish() { gif.finish(); return new Blob([gif.bytes()], { type: 'image/gif' }); },
+    };
+  }
+
+  // The same, but with the frames worked on by a few helpers at once (encode-worker.js), while the
+  // page seeks the videos for the next ones. Much quicker, mostly for GIFs. Returns null if this
+  // browser can't run the helpers, and the one-at-a-time encoders above are used instead.
+  let noHelpers = false;
+  function parallelEncoder(format, w, h, ms, colours) {
+    if (noHelpers || typeof Worker === 'undefined' || (format === 'webp' && typeof OffscreenCanvas === 'undefined')) return null;
+    const count = Math.max(1, Math.min(4, (navigator.hardwareConcurrency || 2) - 1));
+    let workers;
+    try { workers = Array.from({ length: count }, () => new Worker('encode-worker.js')); } catch { return null; }
+    const pieces = [];
+    let next = 0, failed = null, inFlight = 0, wake = null;
+    const kill = () => workers.forEach(wk => wk.terminate());
+    const settle = () => { if (wake) { const f = wake; wake = null; f(); } };
+    for (const wk of workers) {
+      wk.onmessage = ({ data }) => {
+        inFlight--;
+        if (data.error) failed ||= new Error(data.error); else pieces[data.id] = data.bytes;
+        settle();
+      };
+      // A helper that won't run (opened from a file, or blocked) means making it the slower way instead.
+      wk.onerror = e => { e.preventDefault(); failed ||= Object.assign(new Error('helpers'), { helpers: true }); inFlight = 0; settle(); };
+    }
+    const until = test => new Promise(res => { const check = () => test() ? res() : (wake = check); check(); });
+    let alpha = false;
+    return {
+      async add(canvas) {
+        await until(() => failed || inFlight < count * 2); // keep a few frames queued, not the whole film
+        if (failed) { kill(); throw failed; }
+        const id = next++, wk = workers[id % count];
+        inFlight++;
+        if (format === 'gif') {
+          const { data } = canvas.getContext('2d').getImageData(0, 0, w, h);
+          wk.postMessage({ format, id, index: id, pixels: data.buffer, w, h, ms, colours }, [data.buffer]);
+        } else {
+          const bitmap = await createImageBitmap(canvas);
+          wk.postMessage({ format, id, bitmap, w, h, quality: WEBP_QUALITY }, [bitmap]);
+        }
+      },
+      async finish() {
+        await until(() => failed || inFlight === 0);
+        kill();
+        if (failed) throw failed;
+        if (format === 'gif') return new Blob([ascii('GIF89a'), ...pieces, new Uint8Array([0x3b])], { type: 'image/gif' });
+        const frames = pieces.map(u8 => {
+          const parts = frameChunks(u8);
+          if (parts.some(c => c.id === 'ALPH')) alpha = true;
+          return concat(parts.map(c => c.data));
+        });
+        return muxWebP(frames, w, h, ms, alpha);
+      },
+      cancel: kill,
     };
   }
 
@@ -935,31 +988,39 @@ code { font-size: 12.5px; overflow-wrap: anywhere; }
     const octx = oc.getContext('2d', { willReadFrequently: format === 'gif' });
     let made = 0;
 
-    const enc = format === 'gif' ? gifEncoder(OW, OH, ms, +$('colours').value) : webpEncoder(OW, OH, ms);
-    for (let s = 0; s < k; s++) {
-      const src = list[s];
-      const fadeIn = (between && s > 0) || (atEnd && s === 0), fadeOut = (between && s < k - 1) || (atEnd && s === k - 1);
-      const dur = src.isVideo && Number.isFinite(src.el.duration) ? src.el.duration : Infinity;
-      const start = !src.isVideo ? 0 : src.start == null ? randomTime(src.el, n / FPS) : Math.max(0, Math.min(src.start, dur - n / FPS));
-      for (let i = 0; i < n; i++) {
-        const t = i / FPS;
-        let lit = 1;
-        if (fadeIn && fadeSec > 0) lit = Math.min(lit, t / fadeSec);
-        if (fadeOut && fadeSec > 0) lit = Math.min(lit, (n / FPS - t) / fadeSec);
-        const black = 1 - Math.max(0, Math.min(1, lit));
-        if (src.isVideo) { await seekTo(src.el, start + t); draw(src, 1, black); }
-        else if (k === 1) draw(src, 1 + 0.12 * (1 - Math.cos(2 * Math.PI * i / n)) / 2, black); // zoom in and back out, loops cleanly
-        else draw(src, 1 + 0.12 * i / n, black); // slow push-in
+    const colours = +$('colours').value;
+    const enc = parallelEncoder(format, OW, OH, ms, colours)
+      || (format === 'gif' ? gifEncoder(OW, OH, ms, colours) : webpEncoder(OW, OH, ms));
+    try {
+      for (let s = 0; s < k; s++) {
+        const src = list[s];
+        const fadeIn = (between && s > 0) || (atEnd && s === 0), fadeOut = (between && s < k - 1) || (atEnd && s === k - 1);
+        const dur = src.isVideo && Number.isFinite(src.el.duration) ? src.el.duration : Infinity;
+        const start = !src.isVideo ? 0 : src.start == null ? randomTime(src.el, n / FPS) : Math.max(0, Math.min(src.start, dur - n / FPS));
+        for (let i = 0; i < n; i++) {
+          const t = i / FPS;
+          let lit = 1;
+          if (fadeIn && fadeSec > 0) lit = Math.min(lit, t / fadeSec);
+          if (fadeOut && fadeSec > 0) lit = Math.min(lit, (n / FPS - t) / fadeSec);
+          const black = 1 - Math.max(0, Math.min(1, lit));
+          if (src.isVideo) { await seekTo(src.el, start + t); draw(src, 1, black); }
+          else if (k === 1) draw(src, 1 + 0.12 * (1 - Math.cos(2 * Math.PI * i / n)) / 2, black); // zoom in and back out, loops cleanly
+          else draw(src, 1 + 0.12 * i / n, black); // slow push-in
 
-        octx.drawImage(cv, 0, 0, OW, OH);
+          octx.drawImage(cv, 0, 0, OW, OH);
 
-        enc.add(oc);
-        made++;
-        progress(made, total);
-        await new Promise(r => setTimeout(r, 0));
+          await enc.add(oc);
+          made++;
+          progress(made, total);
+          await new Promise(r => setTimeout(r, 0));
+        }
       }
+      return { blob: await enc.finish(), format, w: OW, h: OH, len, k };
+    } catch (e) {
+      enc.cancel?.();
+      if (e.helpers) { noHelpers = true; return render(list, progress); }
+      throw e;
     }
-    return { blob: enc.finish(), format, w: OW, h: OH, len, k };
   }
 
   const renderError = e => e.message === 'nowebp'
@@ -1028,9 +1089,19 @@ code { font-size: 12.5px; overflow-wrap: anywhere; }
     m.textContent = text; m.className = 'msg' + (kind ? ' ' + kind : ''); m.hidden = !text;
   }
 
+  // Jellyfin 12 only takes the key in the Authorization header (X-Emby-Token and api_key are gone);
+  // Emby still uses X-Emby-Token. The container turns X-Server-Authorization into the Authorization
+  // header on the way to the server, so the browser's own one is left for the page's sign-in.
   function authHeaders(k = key()) {
-    return isPlex() ? { 'X-Plex-Token': k, Accept: 'application/json' } : { Authorization: `MediaBrowser Token="${k}"`, 'X-Emby-Token': k };
+    return isPlex() ? { 'X-Plex-Token': k, Accept: 'application/json' }
+      : srv === 'jellyfin' ? { 'X-Server-Authorization': `MediaBrowser Token="${k}"` }
+      : { 'X-Server-Authorization': `MediaBrowser Token="${k}"`, 'X-Emby-Token': k };
   }
+  // The key in a video's address, where no headers can be sent: ApiKey for Jellyfin 10.11 and later
+  // (12 no longer takes api_key), and api_key for older Jellyfin and for Emby.
+  const versions = {}; // each server's version, from checkServers
+  const newJellyfin = () => { const [a, b] = (versions.jellyfin || '').split('.').map(Number); return a > 10 || (a === 10 && b >= 11); };
+  const keyParams = (k = key()) => srv === 'jellyfin' && newJellyfin() ? { ApiKey: k } : { api_key: k };
 
   async function srvFetch(path, opts = {}) {
     const name = SERVERS[srv].name;
@@ -1057,7 +1128,7 @@ code { font-size: 12.5px; overflow-wrap: anywhere; }
       try { if (r.ok) info = await r.json(); } catch {}
       const version = kind === 'plex' ? info?.MediaContainer?.version : info?.Version;
       if (!version) { notes.push(`Can’t reach ${s.name} at the address in ${s.env}. Check the address and that ${s.name} is running, then reload this page.`); continue; }
-      found.push(kind);
+      found.push(kind); versions[kind] = String(version);
       notes.splice(found.length - 1, 0, `Found ${s.name} ${version.split('-')[0]}.`);
     }
     if (!found.length && !notes.length) {
@@ -1437,7 +1508,7 @@ code { font-size: 12.5px; overflow-wrap: anywhere; }
   function clipUrl(it, ms, t, seconds) {
     const [ext, vc, ac] = canMp4() ? ['mp4', 'h264', 'aac'] : ['webm', 'vp8', 'vorbis'];
     const q = new URLSearchParams({
-      MediaSourceId: ms.Id, api_key: key(), VideoCodec: vc, AudioCodec: ac, MaxWidth: '960', VideoBitrate: '4000000',
+      MediaSourceId: ms.Id, ...keyParams(), VideoCodec: vc, AudioCodec: ac, MaxWidth: '960', VideoBitrate: '4000000',
       AudioBitrate: '64000', StartTimeTicks: String(Math.round(t * 1e7)), DeviceId: 'library-cover-maker',
       PlaySessionId: Math.random().toString(36).slice(2), MaxStreamingBitrate: '8000000',
     });
@@ -1458,7 +1529,7 @@ code { font-size: 12.5px; overflow-wrap: anywhere; }
     const dur = (ms.RunTimeTicks || it.RunTimeTicks || 0) / 1e7;
     const hdr = (ms.MediaStreams || []).some(s => s.Type === 'Video' && s.VideoRange && s.VideoRange !== 'SDR');
     if (!hdr) {
-      const q = new URLSearchParams({ static: 'true', MediaSourceId: ms.Id, api_key: key() });
+      const q = new URLSearchParams({ static: 'true', MediaSourceId: ms.Id, ...keyParams() });
       const direct = await openVideo(`${SERVERS[srv].base}Videos/${it.Id}/stream?${q}`, it.Name, 0);
       if (direct) {
         const d = Number.isFinite(direct.el.duration) ? direct.el.duration : dur;
@@ -1736,6 +1807,13 @@ code { font-size: 12.5px; overflow-wrap: anywhere; }
     batchMsg(`Put back ${ok} of ${ids.length}. Refresh your server to see them.`, ok === ids.length ? 'ok' : 'bad');
     batchSetup(); updateRestoreButtons();
   });
+
+  // Remember the look and file settings for next time (in this browser only). A run of every film
+  // and series sets its own while it works, so those aren't kept.
+  const LOOK_STORE = 'libraryCoverMaker.look';
+  try { lookSet(JSON.parse(local.get(LOOK_STORE, '{}'))); } catch {}
+  const keepLook = () => { if (!batch.running) local.set(LOOK_STORE, JSON.stringify(lookNow())); };
+  LOOK.forEach(id => { $(id).addEventListener('change', keepLook); $(id).addEventListener('input', keepLook); });
 
   vaultInit().then(checkServers);
 })();

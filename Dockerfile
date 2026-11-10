@@ -6,16 +6,20 @@ LABEL org.opencontainers.image.title="Library Cover Maker" \
       net.unraid.docker.icon="https://raw.githubusercontent.com/p1zzm1ssile/Library-Cover-Maker/main/web/icon.png" \
       net.unraid.docker.webui="http://[IP]:[PORT:8097]/"
 
+# Optional: AUTH_USER and AUTH_PASSWORD turn on a sign-in for the page.
 # Optional: your server addresses, e.g. http://192.168.1.10:8096, for "Send to your server".
 ENV JELLYFIN_URL="" \
     EMBY_URL="" \
     PLEX_URL="" \
+    AUTH_USER="" \
+    AUTH_PASSWORD="" \
     NGINX_ENTRYPOINT_LOCAL_RESOLVERS=1
 
 COPY nginx.conf.template /etc/nginx/templates/default.conf.template
 COPY web/ /usr/share/nginx/html/
+COPY setup.sh /docker-entrypoint.d/25-library-cover-maker.sh
 COPY data-folder.sh /docker-entrypoint.d/40-data-folder.sh
-RUN mkdir -p /media /data && chmod +x /docker-entrypoint.d/40-data-folder.sh
+RUN mkdir -p /media /data && chmod +x /docker-entrypoint.d/25-library-cover-maker.sh /docker-entrypoint.d/40-data-folder.sh
 
 EXPOSE 8097
-HEALTHCHECK --interval=60s --timeout=5s CMD wget -q -O /dev/null http://127.0.0.1:8097/ || exit 1
+HEALTHCHECK --interval=60s --timeout=5s CMD wget -q -O /dev/null http://127.0.0.1:8097/health || exit 1

@@ -16,4 +16,7 @@ services:
       - JELLYFIN_URL=http://192.168.1.10:8096
       - EMBY_URL=http://192.168.1.11:8096
       - PLEX_URL=http://192.168.1.10:32400
+      # Optional: ask for a username and password before the page opens.
+      # - AUTH_USER=admin
+      # - AUTH_PASSWORD=choose-a-good-one
     restart: unless-stopped
