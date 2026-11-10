@@ -53,11 +53,23 @@ Jellyfin uses port 8096, so the default here is 8097. To use another port, chang
 
 `JELLYFIN_URL`, `EMBY_URL` and `PLEX_URL` are all optional. Set any of them to the address you use to open that server, and the page can send covers and posters straight to it (see [Send to your server](#send-to-your-server)). If the server runs in Docker on the same network as this container, its container name works too, such as `http://jellyfin:8096`. Leave them out and everything else works the same.
 
+### Sign-in
+
+Anyone who can reach the page can use it, browse `/media` and change what's in `/data`. That's fine on a home network, but if you open it up beyond that (through a reverse proxy, for example), set `AUTH_USER` and `AUTH_PASSWORD` and the page asks for that username and password first:
+
+```yaml
+    environment:
+      - AUTH_USER=admin
+      - AUTH_PASSWORD=choose-a-good-one
+```
+
+On Unraid, add them as two **Variables** like `JELLYFIN_URL`. Leave them out to keep the page open.
+
 `/data` is optional too. The page keeps each title's or library's own picture there before replacing it, along with a list of what it has made. Without it you can still send covers and posters, but **Put back** and the make-everything buttons are turned off. Use a folder this container can write to.
 
 Map your media folder to `/media`, read-only. You can map several folders under it, such as `/media/movies` and `/media/tv`. They appear under the **Server media** button. Leave it out if you only want to use files from your computer.
 
-The fonts load from Google Fonts, so the computer you open the page on needs internet access. Without it the text falls back to Georgia.
+The fonts come with the page, so it works the same on a server with no internet access.
 
 ## Make a cover
 
@@ -74,6 +86,8 @@ The fonts load from Google Fonts, so the computer you open the page on needs int
 Keep the file under about 5 MB so your home screen loads quickly. Shorter moments make smaller files. The page shows the size of each file it makes.
 
 **File size settings** has more ways to make files smaller: the picture size, frames a second, and for GIFs the number of colours. It also sets how many moments are cut when the pictures come from your server (1 to 6).
+
+The page remembers the look and file settings in your browser, so they're the same the next time you open it.
 
 ## Make a poster
 

@@ -28,8 +28,18 @@ map $request_uri $plex_path {
 
 server {
     listen 8097;
-    listen [::]:8097;
     root /usr/share/nginx/html;
+
+    # Sign-in, when AUTH_USER and AUTH_PASSWORD are set (written by setup.sh at start-up).
+    include /etc/nginx/lcm-auth.conf;
+
+    # For Docker's health check, so it works with sign-in on.
+    location = /health {
+        auth_basic off;
+        access_log off;
+        default_type text/plain;
+        return 200 'ok';
+    }
 
     location / {
         try_files $uri $uri/ =404;
@@ -55,6 +65,10 @@ server {
         client_max_body_size 64m;
         proxy_read_timeout 300s;
         proxy_buffering off;
+        # The page sends the server's key as X-Server-Authorization, as the browser's own
+        # Authorization header carries the sign-in when AUTH_USER is set.
+        proxy_set_header Authorization $http_x_server_authorization;
+        proxy_set_header X-Server-Authorization "";
         proxy_pass $jellyfin_base$jellyfin_path;
     }
 
@@ -67,6 +81,10 @@ server {
         client_max_body_size 64m;
         proxy_read_timeout 300s;
         proxy_buffering off;
+        # The page sends the server's key as X-Server-Authorization, as the browser's own
+        # Authorization header carries the sign-in when AUTH_USER is set.
+        proxy_set_header Authorization $http_x_server_authorization;
+        proxy_set_header X-Server-Authorization "";
         proxy_pass $emby_base$emby_path;
     }
 
@@ -78,6 +96,7 @@ server {
         resolver ${NGINX_LOCAL_RESOLVERS} valid=30s;
         client_max_body_size 64m;
         proxy_read_timeout 120s;
+        proxy_set_header Authorization "";
         proxy_pass $plex_base$plex_path;
     }
 
